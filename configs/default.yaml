@@ -1,0 +1,15 @@
+defaults:
+  - dataset: brudex_main
+  - model: cosad
+  - transform: default
+  - trainer: default
+  - logger: wandb
+  - callbacks: default
+  - _self_
+
+# Global settings
+task: source_counting
+train: True
+test: True
+predict: False
+predictions_dir: "predictions/default_run"

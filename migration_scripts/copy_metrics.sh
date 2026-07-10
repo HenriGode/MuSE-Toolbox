@@ -1,0 +1,17 @@
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/base_metric.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/common/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/ref_metric.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/common/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/accuracy.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/source_counting/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/confusionMatrix.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/source_counting/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/eventF1.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/source_counting/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/*_rm.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/MAE.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/MSE.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/hermitian_angle.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/fwssnr.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/pesq.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/sdr.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/sisdr.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/stoi.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/sinr.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/metrics/rtf_estimation/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/meta2df.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/utils/
+cp /data4/Henri/j3/framewiseSpeakerCounting/src/metrics/save_audio.py /data4/Henri/MuSE-Toolbox/src/muse_toolbox/utils/

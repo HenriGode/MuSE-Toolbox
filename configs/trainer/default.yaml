@@ -1,0 +1,9 @@
+_target_: lightning.pytorch.Trainer
+accelerator: "auto"
+devices: [1]
+precision: 32
+max_epochs: 100
+
+# Custom fields accessible via ${trainer.sad_batch_size} interpolation
+sad_batch_size: 30
+sad_num_workers: 0

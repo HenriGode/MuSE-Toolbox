@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - _self_
+  - /defaults/audio@_here_
+  - experiment: null  # <--- This line allows command line overriding!
+
+task: "rtf_estimation"
+requires_source_count: true
+
+# Placeholders that Hydra would instantiate later
+model:
+  _target_: muse_toolbox.models.rtf_estimation.SomeModel
+trainer:
+  _target_: lightning.pytorch.Trainer
+  accelerator: "cpu"

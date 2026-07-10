@@ -1,0 +1,4 @@
+sampling_rate: 16000
+stft:
+  n_fft: 512
+  hop_length: 128

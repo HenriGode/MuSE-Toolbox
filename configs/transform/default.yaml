@@ -1,0 +1,5 @@
+_target_: muse_toolbox.utils.STFTtransform
+frame_length: 512
+frame_shift: 256
+sampling_frequency: 16000
+window_type: "hann"

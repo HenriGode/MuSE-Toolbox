@@ -1,0 +1,43 @@
+_target_: muse_toolbox.data.BrudexDataModule
+id: "J1_BXLS_main_exp"
+batch_size: 30
+num_workers: 0
+num_scenarios: [5280, 528, 2640]
+sampling_frequency: 16000
+clean_speech_databases: ["Librispeech"]
+seed: 777
+acc_device: "cpu"
+reset: False
+
+# We dynamically instantiate the config objects needed by the DataModule
+generation_config:
+  _target_: muse_toolbox.data.ScenarioGenerationConfig
+  max_sources: 3
+  signal_lengths: 60.0
+  initial_noise_only_duration: [0.5, 5.0]
+  snrs: [0, 5, 10, 15]
+  source_power_range: 0.0
+  time_between_events: [0.5, 5.0]
+  activations_only: True
+  remove_silence: True
+  neglect_silence4oracle_sa: 0.4
+  bridge_clean_speech_gaps: 0.1
+  vad_threshold2define_oracle: -60
+  vad_threshold2select_clean_speech: -30
+
+brudex_config:
+  _target_: muse_toolbox.data.BrudexConfig
+  reverb_conditions: ["low"]
+  microphone_arrays: ["BTE_IE"]
+  noise_types: 
+    - ["babble", "cafeteria"]
+    - ["babble", "cafeteria"]
+    - ["babble", "cafeteria"]
+  doas: 
+    - [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
+    - [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
+    - [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
+
+# Note: The transform is injected from the global config space
+# so both the model and the dataset share the exact same transform object
+transform: ${transform}

@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - override /dataset: brudex_main
+
+# Example: Changing the signal_lengths and batch size for this specific experiment
+dataset:
+  id: "J1_BXLS_seglen"
+  generation_config:
+    signal_lengths: 30.0
+
+trainer:
+  sad_batch_size: 60
+
+logger:
+  project: "J1_seglen"
+  name: "J1_BXLS_seglen_exp"

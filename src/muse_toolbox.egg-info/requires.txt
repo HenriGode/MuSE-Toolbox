@@ -1,0 +1,7 @@
+numpy
+torch
+torchaudio
+hydra-core
+python-dotenv
+wandb
+lightning

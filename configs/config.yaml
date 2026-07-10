@@ -1,0 +1,23 @@
+# @package _global_
+
+# 1. Defaults List
+# This tells Hydra to load 'audio.yaml' from 'defaults/' by default,
+# and allows you to override 'experiment' from the command line.
+defaults:
+  - _self_
+  - /defaults/audio@_here_  # Force Hydra to look at root (/defaults)
+  - experiment: null  # Allows python main.py experiment=...
+
+# 2. Global Settings
+experiment_name: "Default_Experiment"
+task: null  # Must be set by the experiment config
+seed: 42
+
+# 3. Path Configuration
+# Standard paths for all experiments
+paths:
+  root_dir: ${oc.env:PWD}
+  data_dir: ${paths.root_dir}/data
+  log_dir: ${paths.root_dir}/logs
+  output_dir: ${paths.log_dir}/${task}/${experiment_name}
+  checkpoint_dir: ${paths.output_dir}/checkpoints

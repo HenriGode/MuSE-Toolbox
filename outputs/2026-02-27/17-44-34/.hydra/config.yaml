@@ -1,0 +1,19 @@
+experiment_name: Default_Experiment
+task: rtf_estimation
+seed: 42
+paths:
+  root_dir: ${oc.env:PWD}
+  data_dir: ${paths.root_dir}/data
+  log_dir: ${paths.root_dir}/logs
+  output_dir: ${paths.log_dir}/${task}/${experiment_name}
+  checkpoint_dir: ${paths.output_dir}/checkpoints
+sampling_rate: 16000
+stft:
+  n_fft: 512
+  hop_length: 128
+requires_source_count: true
+model:
+  _target_: muse_toolbox.models.rtf_estimation.SomeModel
+trainer:
+  _target_: lightning.pytorch.Trainer
+  accelerator: cpu

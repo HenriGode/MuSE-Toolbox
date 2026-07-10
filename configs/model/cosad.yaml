@@ -1,0 +1,73 @@
+_target_: muse_toolbox.models.source_counting.cosad.COSADmodule
+
+# These will be resolved dynamically from other parts of the config tree
+transform: ${transform}
+batch_size: ${trainer.sad_batch_size}
+
+# Instead of looping through lists, Hydra allows us to define the active component here.
+# To sweep across different feature extractors, you would use:
+# python scripts/main.py -m model.feature_extractor._target_=...
+feature_extractor:
+  _target_: muse_toolbox.models.building_blocks.feature_extractors.Condensed_LogMel_Feature_Extractor
+  mode: "ref"
+  ref_channel: 0
+  n_mels: 80
+  f_min: 80
+  f_max: null
+  condense_method: "conv"
+  max_channels: 6
+  num_layers: 2
+  kernel_size: 3
+  dropout: 0.0
+
+source_count_estimator:
+  _target_: muse_toolbox.models.building_blocks.source_count_estimators.GRU_estimator
+  hidden_size: 1.0
+  num_layers: 2
+  dropout: 0.0
+  bias: True
+
+loss_config:
+  _target_: muse_toolbox.losses.source_counting.CrossEntropy
+  weight: null
+
+optimizer_config:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.01
+
+lr_scheduler_config:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  monitor: "val/loss"
+  mode: "min"
+  factor: 0.5
+  patience: 3
+  threshold: 0.0001
+  threshold_mode: "rel"
+  cooldown: 0
+  min_lr: 1e-07
+  eps: 1e-08
+
+metrics_train: {}
+metrics_val:
+  TolerantEventF1:
+    tolerance_time: 0.5
+  MAE: {}
+  MSE: {}
+  Accuracy: {}
+  ConfusionMatrix:
+    max_sources: 3
+    stage: "val"
+
+metrics_test:
+  TolerantEventF1:
+    tolerance_time: 0.5
+  MAE: {}
+  MSE: {}
+  Accuracy: {}
+  ConfusionMatrix:
+    max_sources: 3
+    stage: "test"
+
+compute_complexity_metrics: False
+check_causality: False

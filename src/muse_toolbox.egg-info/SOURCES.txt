@@ -1,0 +1,6 @@
+setup.py
+src/muse_toolbox.egg-info/PKG-INFO
+src/muse_toolbox.egg-info/SOURCES.txt
+src/muse_toolbox.egg-info/dependency_links.txt
+src/muse_toolbox.egg-info/requires.txt
+src/muse_toolbox.egg-info/top_level.txt
