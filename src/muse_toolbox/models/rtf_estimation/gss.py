@@ -1,7 +1,8 @@
-from numbers import Number
 import torch
-from muse_toolbox.models.common.base_model import BaseLitModel
-from typing import Optional
+from muse_toolbox.models.base_model import BaseLitModel
+from typing import Optional, Any
+import logging
+
 from muse_toolbox.utils import (
     STFTtransform,
     HeterogeneousBatch,
@@ -11,15 +12,24 @@ from muse_toolbox.utils import (
     trace,
     regularize,
     zero2identity,
-    print_structure,
     activity_dict2tensor,
     get_real_dtype,
     makeHermitian,
 )
 from torchaudio.transforms import SoudenMVDR
 
+log = logging.getLogger(__name__)
+
 
 class BlockOnlineGSS(BaseLitModel):
+    """
+    A PyTorch Lightning module for Block-Online Guided Source Separation (GSS).
+
+    This module orchestrates the processing of heterogeneous scenarios by breaking them 
+    down into utterances and subsequently into STFT blocks. It delegates the core block-level 
+    separation to `OnlineGSS_Block_Processor`.
+    """
+
     def __init__(
         self,
         transform: STFTtransform,
@@ -38,6 +48,26 @@ class BlockOnlineGSS(BaseLitModel):
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):
+        """
+        Initializes the BlockOnlineGSS module.
+
+        Args:
+            transform (STFTtransform): The STFT configuration for transforming audio signals.
+            max_sources (int): The maximum number of expected sources.
+            block_size (float): The length of the processing block in seconds.
+            pre_context (float): The length of the pre-context window in seconds.
+            ref_channels (list[int]): List of reference channels for target extraction.
+            latency_constraint (bool): Whether to enforce latency constraints during beamforming.
+            batch_size (int): Batch size for processing.
+            loss_config (dict): Configuration for the loss function.
+            optimizer_config (Optional[dict]): Configuration for the optimizer.
+            lr_scheduler_config (Optional[dict]): Configuration for the learning rate scheduler.
+            metrics_train (Optional[dict]): Metrics to track during training.
+            metrics_val (Optional[dict]): Metrics to track during validation.
+            metrics_test (Optional[dict]): Metrics to track during testing.
+            compute_complexity_metrics (bool): Whether to profile computational complexity.
+            check_causality (bool): Whether to enforce causality checks on the model.
+        """
         super().__init__(
             model_name="BlockOnlineGSS",
             batch_size=batch_size,
@@ -67,7 +97,16 @@ class BlockOnlineGSS(BaseLitModel):
             latency_constraint=latency_constraint,
         )
 
-    def forward_(self, batch: HeterogeneousBatch):
+    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
+        """
+        Executes the forward pass for a batch of heterogeneous scenarios.
+
+        Args:
+            batch (HeterogeneousBatch): The input batch containing STFT audio and metadata.
+
+        Returns:
+            HeterogeneousBatch: The same batch, populated with the `estimates` attribute.
+        """
 
         results = []
 
@@ -87,17 +126,31 @@ class BlockOnlineGSS(BaseLitModel):
 
         batch.estimates = results  # List of list of tensors
 
-        # batch.print_summary()
-
         return batch
 
     def test_step(self, batch: dict, batch_idx: int, dataloader_idx: int = 0) -> None:
+        """
+        Executes a single test step, computing metrics for the given batch.
+
+        Args:
+            batch (dict): The test batch data.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+        """
         processed_batch = self(batch)
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def _metric_step(
-        self, processed_batch: HeterogeneousBatch, dataloader_idx, step_type
-    ):
+        self, processed_batch: HeterogeneousBatch, dataloader_idx: int, step_type: str
+    ) -> None:
+        """
+        Updates the metric collections based on the estimates from the forward pass.
+
+        Args:
+            processed_batch (HeterogeneousBatch): The processed batch containing estimates and metadata.
+            dataloader_idx (int): The index of the dataloader.
+            step_type (str): The step type (e.g., 'val', 'test').
+        """
         meta_dict = processed_batch.meta.copy()
         meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
         targets = (meta_dict["rtfs"], meta_dict["references"])
@@ -110,12 +163,21 @@ class BlockOnlineGSS(BaseLitModel):
         stft: torch.Tensor,
         source_activity: dict[str, torch.Tensor],
         source_id_map: dict[int, str],
-    ):
-        """_summary_
+    ) -> tuple[dict[str, torch.Tensor], list[torch.Tensor], list[list[int]], dict[str, torch.Tensor]]:
+        """
+        Processes a single scenario (utterance) through the Block-Online GSS logic.
 
         Args:
-            stft (torch.Tensor) of shape: (F, M, T)
-            source_activity (dict[str,torch.Tensor]) of shape: {source_id: (T,)}
+            stft (torch.Tensor): The mixture STFT of shape `[F, M, T]`.
+            source_activity (dict[str, torch.Tensor]): A dictionary mapping source IDs to their activity tensors over time.
+            source_id_map (dict[int, str]): A mapping from local integer IDs to global string IDs.
+
+        Returns:
+            tuple: A 4-element tuple containing:
+                - dict[str, torch.Tensor]: Target signal estimates (e.g., SMVDR output).
+                - list[torch.Tensor]: Segment-wise RTF estimates.
+                - list[list[int]]: Segment-wise active source IDs.
+                - dict[str, torch.Tensor]: Segment-wise target beamformer weights.
         """
         source_ids, activity_tensor, target_id_stream, _ = activity_dict2tensor(
             source_activity, source_id_map
@@ -226,6 +288,13 @@ class BlockOnlineGSS(BaseLitModel):
 
 
 class OnlineGSS_Block_Processor:
+    """
+    A processor class that executes the Block-Online Guided Source Separation (GSS) algorithm.
+
+    This class maintains the state (e.g., spatial covariance matrices, spatial filter weights) 
+    across overlapping blocks of an STFT utterance, updating them recursively based on 
+    provided source activity information.
+    """
     def __init__(
         self,
         Kmax: int,
@@ -235,6 +304,17 @@ class OnlineGSS_Block_Processor:
         ref_channels: list[int] = [0],
         latency_constraint: bool = True,
     ):
+        """
+        Initializes the OnlineGSS_Block_Processor.
+
+        Args:
+            Kmax (int): The maximum number of sources to track.
+            L (int): The block length in frames.
+            C (int): The number of pre-context frames per block.
+            eta (Optional[float]): Decay factor for moving sources. Defaults to None.
+            ref_channels (list[int]): List of reference channels.
+            latency_constraint (bool): Whether to enforce a causal latency constraint.
+        """
         self.Kmax = Kmax  # Number of sources
         self.L = L  # Block length (in frames)
         self.C = C  # Number of pre-context frames
@@ -248,15 +328,20 @@ class OnlineGSS_Block_Processor:
 
     def process_utterance(
         self, stft: torch.Tensor, activity: torch.Tensor, source_ids: list[int]
-    ):
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[list[int]], list[torch.Tensor]]:
         """Processes an entire utterance block by block.
 
         Args:
-            stft_blocks (torch.Tensor): STFT blocks of shape (N, F, M, C+L)
-            activity_blocks (torch.Tensor): Activity blocks of shape (N, num_sources, C+L)
+            stft (torch.Tensor): The mixture STFT of shape `(F, M, T)`.
+            activity (torch.Tensor): Source activity tensor of shape `(Kmax, T)`.
+            source_ids (list[int]): List of active source IDs.
 
         Returns:
-            torch.Tensor: Processed output for the utterance.
+            tuple: A 4-element tuple containing:
+                - list[torch.Tensor]: Segment-wise enhanced STFT outputs.
+                - list[torch.Tensor]: Segment-wise framewise RTF vectors.
+                - list[list[int]]: Segment-wise active source IDs.
+                - list[torch.Tensor]: Segment-wise beamformer weight matrices.
         """
         F, M, T = stft.shape  # (F, M, T)
         stft = stft.to(torch.complex64)
@@ -486,12 +571,7 @@ class OnlineGSS_Block_Processor:
             .expand(-1, -1, F)
         )  # (Kact, F, L)
 
-        # if self.gamma.isnan().any():
-        #     t = 5
-        # if self.gamma.isinf().any():
-        #     t = 5
-        # if ((self.gamma < 0).any()) or ((self.gamma > 1).any()):
-        #     t = 5
+
 
         # L13: Update alpha for k in Kact using Xn_plus by (5)
         # Time context clarified by mail from author: "I think Xn^plus in Line 13 should be Tn^plus."
@@ -530,10 +610,7 @@ class OnlineGSS_Block_Processor:
                 ).nan_to_num(nan=0.0)
             )  # (Knew, F, M, M)
 
-        # if self.Bn_plus.isnan().any():
-        #     t = 5
-        # if self.Bn_plus.isinf().any():
-        #     t = 5
+
 
         # L15: Update B for k in Kact using Xn_plus by (15)-(16) or (17)
         # We use (15)-(16) here, since sources are not moving in our scenairo
@@ -573,17 +650,13 @@ class OnlineGSS_Block_Processor:
         )  # (Kact, F, C+L)
         detB = torch.linalg.det(B_rs_7.to(torch.complex128)).real  # (Kact, F, 1)
 
-        # if (detB <= 0).any():
-        #     t = 5
+
 
         a_d_detB_xHbx = (alpha * dn_plus_rs / detB / xHBx_7).nan_to_num(
             nan=0.0
         )  # (Kact, F, C+L)
 
-        # if a_d_detB_xHbx.isnan().any():
-        #     t = 5
-        # if a_d_detB_xHbx.isinf().any():
-        #     t = 5
+
 
         self.gamma[Kact_ai, :, Tn_plus] = self._num_stability4gamma(
             norm_by_sum(a_d_detB_xHbx, dims=0)
@@ -592,12 +665,7 @@ class OnlineGSS_Block_Processor:
             .permute(0, 2, 1)
         )  # (Kact, F, C+L)
 
-        # if self.gamma.isnan().any():
-        #     t = 5
-        # if self.gamma.isinf().any():
-        #     t = 5
-        # if ((self.gamma < 0).any()) or ((self.gamma > 1).any()):
-        #     t = 5
+
 
         # L17: Define Kbf as the set of sources to be beamformed // All active speech sources
         Kbf = Kact[torch.tensor(self.source_ids, device=Kact.device)[Kact] != -2]
@@ -640,10 +708,7 @@ class OnlineGSS_Block_Processor:
             nan=0.0
         )  # (Kbf, F, M, M)
 
-        # if R_speech.isnan().any():
-        #     t = 5
-        # if R_speech.isinf().any():
-        #     t = 5
+
 
         R_noise = wmean(
             xxH, weights=(1 - gamma_rs_10_11), dims=-3, keepdim=False
@@ -651,10 +716,7 @@ class OnlineGSS_Block_Processor:
             nan=0.0
         )  # (Kbf, F, M, M)
 
-        # if R_noise.isnan().any():
-        #     t = 5
-        # if R_noise.isinf().any():
-        #     t = 5
+
 
         # Gode: calculate RTFs from R_speech
         rtfs = peigvech(R_speech).squeeze(-1).movedim(0, -1)  # (F, M, Kbf)
@@ -665,10 +727,7 @@ class OnlineGSS_Block_Processor:
             nan=0.0
         )  # (Kbf, F, M, M)
 
-        # if w.isnan().any():
-        #     t = 5
-        # if w.isinf().any():
-        #     t = 5
+
 
         if not self.latency_constraint:
             w_store = w.unsqueeze(-3).expand(
@@ -861,7 +920,11 @@ class OnlineGSS_Block_Processor:
 
         return torch.stack(z_Klist)  # (Kbf, F, M, L)
 
-    def _zero_buffers(self):
+    def _zero_buffers(self) -> None:
+        """
+        Resets the internal buffer state variables used for enforcing the latency constraint.
+        Sets the previous beamformer weights and spatial covariance matrices to zero.
+        """
         if self.latency_constraint:
             self.w_old[:, :, :, :] = (
                 0  # (Kmax, F, M, M) We need slicing here to avoid changing the tensor to a scalar
@@ -874,7 +937,20 @@ class OnlineGSS_Block_Processor:
             )
 
     @staticmethod
-    def _solve(A, B):
+    def _solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        """
+        Solves a system of linear equations `AX = B` robustly.
+
+        Regularizes the matrix `A` and falls back to a least squares solution 
+        if the exact solver fails.
+
+        Args:
+            A (torch.Tensor): The left-hand side matrix of shape `[..., M, M]`.
+            B (torch.Tensor): The right-hand side matrix of shape `[..., M, K]`.
+
+        Returns:
+            torch.Tensor: The solution matrix `X` of shape `[..., M, K]`.
+        """
         A = zero2identity(regularize(A, reg_factor=1e-6))
         try:
             return torch.linalg.solve(A, B)

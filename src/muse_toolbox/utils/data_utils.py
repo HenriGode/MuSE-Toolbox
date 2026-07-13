@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torchcodec.decoders import AudioDecoder
 
-from building_blocks.source_count_estimators.base_estimator import (
+from muse_toolbox.models.source_counting.estimators.base_estimator import (
     BaseSourceCountEstimator,
 )
 from losses import BaseLoss
@@ -17,7 +17,7 @@ import warnings
 from scipy.spatial.distance import pdist
 from shapely.geometry import Point
 import trimesh
-from building_blocks.feature_extractors.base_feature import BaseFeatureExtractor
+from components.feature_extractors.base_feature import BaseFeatureExtractor
 from dataclasses import dataclass
 
 

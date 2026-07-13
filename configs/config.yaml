@@ -12,6 +12,7 @@ defaults:
 experiment_name: "Default_Experiment"
 task: null  # Must be set by the experiment config
 seed: 42
+matmul_precision: "highest"  # PyTorch tensor core optimization (highest, high, medium)
 
 # 3. Path Configuration
 # Standard paths for all experiments

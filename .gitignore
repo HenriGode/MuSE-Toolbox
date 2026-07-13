@@ -1,0 +1,66 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch / Machine Learning
+*.pth
+*.pt
+*.ckpt
+lightning_logs/
+wandb/
+
+# Data and Outputs (Crucial for this project)
+data/
+outputs/
+logs/
+checkpoints/
+predictions/
+results/
+output_audio/
+databases/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda
+
+# IDEs
+.vscode/
+.idea/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Documents and Images
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.bmp
+*.tiff
+*.webp

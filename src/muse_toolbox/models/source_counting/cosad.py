@@ -1,20 +1,24 @@
 import torch
-import math
-import matplotlib
-from muse_toolbox.models.building_blocks.feature_extractors import BaseFeatureExtractor
-from muse_toolbox.models.building_blocks.source_count_estimators import BaseSourceCountEstimator
-from utilities.data_utils import HeterogeneousBatch
+from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
+from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
+from muse_toolbox.utils import HeterogeneousBatch
 import muse_toolbox.utils as utilities
-from muse_toolbox.models.common.base_model import BaseLitModel
+from muse_toolbox.models.base_model import BaseLitModel
 from typing import Optional, Any
+import logging
 
-matplotlib.use("agg")
-
-EPS = torch.as_tensor(torch.finfo(torch.get_default_dtype()).eps)
-PI = math.pi
+log = logging.getLogger(__name__)
 
 
 class COSADmodule(BaseLitModel):
+    """
+    A PyTorch Lightning module for Continuous Online Source Activity Detection (COSAD).
+
+    This module orchestrates a two-stage pipeline:
+    1. Feature Extraction: Processes raw STFT input into discriminative features.
+    2. Source Count Estimation: Uses the extracted features to estimate the number of 
+       active sources over time.
+    """
 
     def __init__(
         self,
@@ -22,15 +26,32 @@ class COSADmodule(BaseLitModel):
         feature_extractor: BaseFeatureExtractor,
         source_count_estimator: BaseSourceCountEstimator,
         batch_size: int = 1,
-        loss_config: dict = {"CrossEntropy": None},
-        optimizer_config: Optional[dict] = None,
-        lr_scheduler_config: Optional[dict] = None,
-        metrics_train: Optional[dict] = None,
-        metrics_val: Optional[dict] = None,
-        metrics_test: Optional[dict] = None,
+        loss_config: dict[str, Any] = {"CrossEntropy": None},
+        optimizer_config: Optional[dict[str, Any]] = None,
+        lr_scheduler_config: Optional[dict[str, Any]] = None,
+        metrics_train: Optional[dict[str, Any]] = None,
+        metrics_val: Optional[dict[str, Any]] = None,
+        metrics_test: Optional[dict[str, Any]] = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):
+        """
+        Initializes the COSADmodule.
+
+        Args:
+            transform (utilities.STFTtransform): The STFT configuration for transforming audio signals.
+            feature_extractor (BaseFeatureExtractor): Module responsible for extracting features from the STFT.
+            source_count_estimator (BaseSourceCountEstimator): Module responsible for predicting source activity.
+            batch_size (int): Batch size for processing.
+            loss_config (dict[str, Any]): Configuration for the loss function.
+            optimizer_config (Optional[dict[str, Any]]): Configuration for the optimizer.
+            lr_scheduler_config (Optional[dict[str, Any]]): Configuration for the learning rate scheduler.
+            metrics_train (Optional[dict[str, Any]]): Metrics to track during training.
+            metrics_val (Optional[dict[str, Any]]): Metrics to track during validation.
+            metrics_test (Optional[dict[str, Any]]): Metrics to track during testing.
+            compute_complexity_metrics (bool): Whether to profile computational complexity.
+            check_causality (bool): Whether to enforce causality checks on the model.
+        """
         super().__init__(
             model_name=f"COSAD_{feature_extractor.__class__.__name__}_{source_count_estimator.__class__.__name__}",
             batch_size=batch_size,
@@ -68,40 +89,46 @@ class COSADmodule(BaseLitModel):
 
     def _verbose_parameters(self, indent: str = "") -> None:
         """
-        Prints the parameters of the module in a structured, indented format.
+        Logs the parameters of the module and its sub-components in a structured format.
 
         Args:
-            indent (str, optional): A string to prepend to each line for indentation.
-                                    Defaults to "".
+            indent (str): A string to prepend to each log line for indentation.
         """
-        print(f"{indent}{self.__class__.__name__} Parameters:")
-        print(f"{indent}  Batch Size: {self.batch_size}")
-        print(f"{indent}  Test Metrics: {self.metrics_test}")
-        self.transform._verbose_parameters(indent=indent + "  ")
+        log.info(f"{indent}{self.__class__.__name__} Parameters:")
+        log.info(f"{indent}  Batch Size: {self.batch_size}")
+        log.info(f"{indent}  Test Metrics: {self.metrics_test}")
+        
+        if hasattr(self.transform, "_verbose_parameters"):
+            self.transform._verbose_parameters(indent=indent + "  ")
 
         if hasattr(self.feature_extractor, "_verbose_parameters"):
             self.feature_extractor._verbose_parameters(indent=indent + "  ")
         else:
-            print(
+            log.info(
                 f"{indent}  Feature Extractor: {self.feature_extractor.__class__.__name__}"
             )
 
         if hasattr(self.source_count_estimator, "_verbose_parameters"):
             self.source_count_estimator._verbose_parameters(indent=indent + "  ")
         else:
-            print(
+            log.info(
                 f"{indent}  Source Count Estimator: {self.source_count_estimator.__class__.__name__}"
             )
 
-    def forward_(
-        self,
-        batch: HeterogeneousBatch,
-    ) -> HeterogeneousBatch:
+    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
         """
-        Forward pass of the LightningModule.
+        Executes the forward pass of the COSAD pipeline.
 
-        The input `batch` is expected to be a dictionary (from the DataModule).
-        It should contain the 'input_type' key so the feature extractor knows what to do.
+        Applies the feature extractor followed by the source count estimator 
+        to the provided batch data.
+
+        Args:
+            batch (HeterogeneousBatch): A batch object containing the STFT input 
+                data and relevant metadata.
+
+        Returns:
+            HeterogeneousBatch: The processed batch, now populated with source 
+                activity estimates.
         """
 
         # 1. Feature Extraction
@@ -112,7 +139,20 @@ class COSADmodule(BaseLitModel):
         batch.apply_source_count_estimator(self.source_count_estimator)
         return batch
 
-    def predict_step(self, *args: Any, **kwargs: Any) -> Any:
-        predictions = super().predict_step(*args, **kwargs)
+    def predict_step(
+        self, batch: HeterogeneousBatch, batch_idx: int, dataloader_idx: int = 0
+    ) -> HeterogeneousBatch:
+        """
+        Executes a single prediction step and performs argmax on the estimates.
+
+        Args:
+            batch (HeterogeneousBatch): The prediction batch.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+
+        Returns:
+            HeterogeneousBatch: The batch with discretized (argmax) source count estimates.
+        """
+        predictions = super().predict_step(batch, batch_idx, dataloader_idx)
         predictions.estimates = [est.argmax(dim=-1) for est in predictions.estimates]
         return predictions

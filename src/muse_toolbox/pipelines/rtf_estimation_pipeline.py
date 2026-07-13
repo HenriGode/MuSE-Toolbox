@@ -1,42 +1,24 @@
-"""RTF estimation pipeline for MuSE-Toolbox."""
+"""RTF estimation pipeline for MuSE-Toolbox.
 
+This module handles the training and evaluation of RTF estimators,
+supporting both oracle activations and precomputed Source Activity Detection.
+"""
+
+import logging
 import os
+
+from typing import Optional
+
 import torch
 import hydra
 import lightning as pl
+from omegaconf import DictConfig
 
-class PrecomputedSAD(torch.nn.Module):
-    """
-    A wrapper module to load precomputed SAD (Source Activity Detection) 
-    predictions from disk. This allows the RTF module to use cached 
-    results instead of running the SAD model on the fly.
-    """
-    def __init__(self, predictions_dir):
-        super().__init__()
-        self.predictions_dir = predictions_dir
-
-    def forward(self, x):
-        # We expect x to be a HeterogeneousBatch or similar where .meta exists
-        if not hasattr(x, "meta") or "scenario_id" not in x.meta:
-            raise ValueError("Input batch lacks required 'meta' dictionary with 'scenario_id'.")
-            
-        scenario_ids = x.meta["scenario_id"]
-        estimated_source_activities = []
-        device = x.device if hasattr(x, "device") else torch.device("cpu")
-
-        for sid in scenario_ids:
-            filepath = os.path.join(self.predictions_dir, f"{sid}.pt")
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"SAD prediction not found for {sid} at {filepath}")
-
-            pred = torch.load(filepath, map_location=device)
-            estimated_source_activities.append(pred)
-
-        return estimated_source_activities
+log = logging.getLogger(__name__)
 
 
-def run_rtf_estimation_pipeline(cfg, custom_predictions_dir=None) -> None:
-    """Executes the RTF estimation pipeline based on the provided configuration.
+def run_rtf_estimation_pipeline(cfg: DictConfig, custom_predictions_dir: Optional[str] = None) -> None:
+    """Executes the RTF estimation pipeline based on the configuration.
     
     This general pipeline handles training and evaluating the RTF estimators 
     (e.g., using online-CGMM-MVDR, Oracle, BlockOnlineGSS). It can dynamically 
@@ -44,14 +26,14 @@ def run_rtf_estimation_pipeline(cfg, custom_predictions_dir=None) -> None:
     Source Counting pipeline.
     
     Args:
-        cfg: The configuration object (from Hydra).
+        cfg (DictConfig): The hierarchical Hydra configuration object.
         custom_predictions_dir (str, optional): A runtime override for the directory 
             containing precomputed SAD predictions.
     """
-    print(f"Starting RTF estimation pipeline...")
+    log.info("Starting RTF estimation pipeline...")
     
     # 1. Instantiate DataModule
-    print("Instantiating DataModule...")
+    log.info("Instantiating DataModule...")
     datamodule = hydra.utils.instantiate(cfg.dataset)
     
     # 2. Setup SAD Model Injection
@@ -63,11 +45,13 @@ def run_rtf_estimation_pipeline(cfg, custom_predictions_dir=None) -> None:
     if not cfg.get("use_oracle_activations", True):
         if not predictions_dir or not os.path.exists(predictions_dir):
             raise ValueError("Non-oracle RTF requires a valid 'predictions_dir' containing SAD outputs.")
-        print(f"Injecting PrecomputedSAD wrapper reading from {predictions_dir}")
+        log.info(f"Injecting PrecomputedSAD wrapper reading from {predictions_dir}")
+        
+        from muse_toolbox.models.source_counting.precomputed_sad import PrecomputedSAD
         sad_model = PrecomputedSAD(predictions_dir)
 
     # 3. Instantiate Model
-    print("Instantiating Model...")
+    log.info("Instantiating Model...")
     model = hydra.utils.instantiate(cfg.model)
     
     if sad_model is not None:
@@ -101,11 +85,11 @@ def run_rtf_estimation_pipeline(cfg, custom_predictions_dir=None) -> None:
     
     # 7. Train and Test
     if cfg.get("train", True):
-        print("Starting training...")
+        log.info("Starting training...")
         trainer.fit(model, datamodule=datamodule)
         
     if cfg.get("test", True):
-        print("Starting testing...")
+        log.info("Starting testing...")
         trainer.test(model, datamodule=datamodule)
     
-    print("RTF estimation pipeline completed.")
+    log.info("RTF estimation pipeline completed.")

@@ -1,8 +1,8 @@
 import torch
 import math
 import matplotlib
-from muse_toolbox.models.building_blocks.rtf_estimators import BaseRTFestimator, Oracle
-from muse_toolbox.models.common.base_model import BaseLitModel
+from muse_toolbox.models.rtf_estimation.estimators import BaseRTFestimator, Oracle
+from muse_toolbox.models.base_model import BaseLitModel
 from typing import Optional
 from muse_toolbox.utils import (
     HeterogeneousBatch,
@@ -22,11 +22,23 @@ from dataclasses import dataclass
 
 matplotlib.use("agg")
 
+import logging
+
+log = logging.getLogger(__name__)
+
 EPS = torch.as_tensor(torch.finfo(torch.get_default_dtype()).eps)
 PI = math.pi
 
 
 class RTFmodule(BaseLitModel):
+    """
+    A PyTorch Lightning module that orchestrates Relative Transfer Function (RTF) estimation
+    for dynamic scenarios with varying source counts.
+    
+    This module delegates the core framewise mathematical estimation to a provided 
+    `BaseRTFestimator` algorithm, while handling the high-level logic of source activity, 
+    scenario segmentation, target extraction, and metric calculation.
+    """
 
     def __init__(
         self,
@@ -52,6 +64,32 @@ class RTFmodule(BaseLitModel):
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):
+        """
+        Initializes the RTFmodule.
+
+        Args:
+            transform (STFTtransform): The STFT configuration for transforming audio signals.
+            smoothing_time_constant (float): The time constant for covariance matrix smoothing in seconds.
+            segment_forgetting_factor (float): The forgetting factor used at the beginning of segments [0, 1].
+            fix_prev_rel_time (float): The relative time within a segment to fix the previous covariance.
+            noisy_cov_init_time (float): Initialization time for noisy covariance in seconds.
+            registry_HA_threshold (float): Threshold in radians for Hermitian Angle source matching.
+            rtf_estimator (BaseRTFestimator): The core algorithm for framewise RTF estimation.
+            interferer_gain (float): Gain applied to interfering sources during target extraction in dB.
+            bf_type (str): Type of beamformer to use for target extraction (e.g., 'MVDR', 'LCMV').
+            refchannels (list[int]): List of reference channels for beamforming.
+            max_sources (Optional[int]): The maximum number of sources allowed.
+            source_activity_method (Optional[torch.nn.Module]): Model for SAD. If None, oracle SAD is used.
+            batch_size (int): Batch size for processing.
+            loss_config (dict): Configuration for the loss function.
+            optimizer_config (Optional[dict]): Configuration for the optimizer.
+            lr_scheduler_config (Optional[dict]): Configuration for the learning rate scheduler.
+            metrics_train (Optional[dict]): Metrics to track during training.
+            metrics_val (Optional[dict]): Metrics to track during validation.
+            metrics_test (Optional[dict]): Metrics to track during testing.
+            compute_complexity_metrics (bool): Whether to profile computational complexity.
+            check_causality (bool): Whether to enforce causality checks on the model.
+        """
         super().__init__(
             model_name=f"RTF_Estimator_{rtf_estimator.__class__.__name__}",
             batch_size=batch_size,
@@ -126,6 +164,17 @@ class RTFmodule(BaseLitModel):
         return source_count
 
     def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
+        """
+        Executes the RTF estimation pipeline for a batch of scenarios.
+
+        Args:
+            batch (HeterogeneousBatch): A heterogeneous batch containing the STFT audio 
+                signals and meta-information.
+
+        Returns:
+            HeterogeneousBatch: The same batch, but populated with the `estimates` 
+                attribute containing the inferred RTFs, IDs, and beamformed targets.
+        """
         # 1. Get Source Activity (Oracle or Estimated)
         # Shape: [Batch, Time] (counts) ### Future-TODO: also allow [Batch, Time, Sources] (activity flags)
         source_activity = (
@@ -158,17 +207,31 @@ class RTFmodule(BaseLitModel):
 
         batch.estimates = results  # List of list of tensors
 
-        # batch.print_summary()
-
         return batch
 
     def test_step(self, batch: dict, batch_idx: int, dataloader_idx: int = 0) -> None:
+        """
+        Executes a single test step, computing metrics for the given batch.
+
+        Args:
+            batch (dict): The test batch data.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+        """
         processed_batch = self(batch)
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def _metric_step(
-        self, processed_batch: HeterogeneousBatch, dataloader_idx, step_type
+        self, processed_batch: HeterogeneousBatch, dataloader_idx: int, step_type: str
     ):
+        """
+        Updates the metric collections based on the estimates from the forward pass.
+
+        Args:
+            processed_batch (HeterogeneousBatch): The batch containing ground truth and estimates.
+            dataloader_idx (int): The index of the dataloader.
+            step_type (str): The step type (e.g., 'val', 'test').
+        """
         meta_dict = processed_batch.meta.copy()
         meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
         targets = (meta_dict["rtfs"], meta_dict["references"])
@@ -179,11 +242,26 @@ class RTFmodule(BaseLitModel):
     def predict_step(
         self, batch: dict, batch_idx: int, dataloader_idx: int = 0
     ) -> HeterogeneousBatch:
+        """
+        Executes a single prediction step.
+
+        Args:
+            batch (dict): The prediction batch data.
+            batch_idx (int): The index of the batch.
+            dataloader_idx (int): The index of the dataloader.
+
+        Returns:
+            HeterogeneousBatch: The processed batch with estimates.
+        """
         return self(batch)
 
 
 @dataclass
 class RTFState:
+    """
+    Dataclass for tracking the recursive state variables during RTF estimation 
+    across dynamic segments of a scenario.
+    """
     noise_cov: torch.Tensor
     noise_cov_est_frames: int
     noisy_cov: torch.Tensor
@@ -194,10 +272,26 @@ class RTFState:
 
 @dataclass
 class SourceRegistry:
+    """
+    A registry system that tracks and identifies unique acoustic sources within a scenario.
+
+    Uses Hermitian Angle distances to dynamically assign global IDs to newly estimated 
+    Relative Transfer Functions (RTFs) based on historical matching.
+    """
     # Stores global source identities
     # registry_rtfs: [F, M, N_reg]
 
-    def __init__(self, Kmax, F, M, device, dtype):
+    def __init__(self, Kmax: Optional[int], F: int, M: int, device: torch.device, dtype: torch.dtype):
+        """
+        Initializes the SourceRegistry.
+
+        Args:
+            Kmax (Optional[int]): The maximum number of sources allowed.
+            F (int): The number of frequency bins.
+            M (int): The number of microphones.
+            device (torch.device): The device to store registry tensors on.
+            dtype (torch.dtype): The data type for registry tensors.
+        """
         self.registry_rtfs = torch.zeros((F, M, 0), device=device, dtype=dtype)
         self.registry_counts = torch.zeros((0,), device=device, dtype=torch.long)
         self.global_ids = torch.empty((0,), device=device, dtype=torch.long)
@@ -271,10 +365,16 @@ class SourceRegistry:
 
         return matched_ids
 
-    def register_new(self, rtf: torch.Tensor):
+    def register_new(self, rtf: torch.Tensor) -> int:
         """
-        Register a new source.
-        rtf: [F, M, 1] or [F, M]
+        Registers a new source into the registry and assigns it a global ID.
+
+        Args:
+            rtf (torch.Tensor): The initial Relative Transfer Function vector for the new source.
+                Must be of shape `[F, M, 1]`.
+
+        Returns:
+            int: The newly assigned global ID for this source.
         """
         assert rtf.ndim == 3, "RTF must be a 3D tensor."
 
@@ -300,7 +400,11 @@ class SourceRegistry:
 
     def update_entry(self, global_id: int, rtf: torch.Tensor):
         """
-        Update an existing source's average RTF.
+        Updates an existing source's average RTF in the registry.
+
+        Args:
+            global_id (int): The unique global ID of the source.
+            rtf (torch.Tensor): The updated Relative Transfer Function vector of shape `[F, M]`.
         """
         # smooth update? Or just replace?
         # Usually for registry we might want a running average.
@@ -313,15 +417,20 @@ class SourceRegistry:
 
 
 class RTFScenarioProcessor:
+    """
+    A processor class responsible for handling the timeline of a single scenario.
+    It breaks the scenario into constant-activity segments and delegates 
+    estimation tasks to the underlying RTF estimator while managing state.
+    """
     def __init__(
         self,
         rtf_estimator: BaseRTFestimator,
         transform: STFTtransform,
-        smoothing_time_constant,
-        segment_forgetting_factor,
-        noisy_cov_init_time,
-        fix_prev_rel_time,
-        bf_type,
+        smoothing_time_constant: float,
+        segment_forgetting_factor: float,
+        noisy_cov_init_time: float,
+        fix_prev_rel_time: float,
+        bf_type: str | list[str],
         seg_cov_win=lambda x: torch.hann_window(
             x.shape[-1] + 1, device=x.device
         ).sqrt()[1:],
@@ -330,6 +439,23 @@ class RTFScenarioProcessor:
         interferer_gain: float = 0.0,  # [dB]
         ref_channels: list[int] = [0],
     ):
+        """
+        Initializes the RTFScenarioProcessor.
+
+        Args:
+            rtf_estimator (BaseRTFestimator): The core algorithm for framewise RTF estimation.
+            transform (STFTtransform): The STFT configuration for transforming audio signals.
+            smoothing_time_constant (float): Time constant for tracking the covariance matrix.
+            segment_forgetting_factor (float): Forgetting factor to apply at the beginning of segments.
+            noisy_cov_init_time (float): Time duration used to initialize the noisy covariance matrix.
+            fix_prev_rel_time (float): Relative time within a segment to capture the fixed previous covariance.
+            bf_type (str | list[str]): The type of beamformer(s) to use.
+            seg_cov_win (Callable): Windowing function for computing segment-wise covariance.
+            registry_HA_threshold (float): Threshold in radians for matching sources via Hermitian Angle.
+            max_sources (Optional[int]): The maximum number of sources.
+            interferer_gain (float): Gain to apply to interfering sources during beamforming (dB).
+            ref_channels (list[int]): List of reference microphones for beamforming.
+        """
         self.rtf_estimator = rtf_estimator
         self.transform = transform
         self.smoothing_time_constant = smoothing_time_constant
@@ -355,8 +481,19 @@ class RTFScenarioProcessor:
         dict[str, torch.Tensor],
     ]:
         """
-        stft: [F, M, T]
-        source_activity: [T] (counts)
+        Processes a single scenario's timeline by breaking it into segments and estimating RTFs.
+
+        Args:
+            stft (torch.Tensor): The STFT of the multi-channel mixture. Shape `[F, M, T]`.
+            source_activity (torch.Tensor): Sequence of active source counts over time. Shape `[T]`.
+            **kwargs: Additional arguments passed to the underlying `BaseRTFestimator`.
+
+        Returns:
+            tuple: A 4-element tuple containing:
+                - target (dict[str, torch.Tensor]): Dictionary of beamformed target estimates.
+                - rtf_estimates (list[torch.Tensor]): Sequence of RTF estimates per segment.
+                - id_estimates (list[torch.Tensor]): Sequence of assigned source IDs per segment.
+                - target_bf (dict[str, torch.Tensor]): Beamformer objects used for extraction.
         """
 
         # 1. Identify Segments
@@ -381,28 +518,18 @@ class RTFScenarioProcessor:
         rtf_estimates = []  # List of [F, T_seg, M, K] tensors
         id_estimates = []  # List of [T_seg, K] tensors
 
-        # noisy_cov_mat_all_segments = self._precompute_noisy_cov_mat(stft, segments)
-        # noisy_cov_mat_all_segments2 = self._precompute_noisy_cov_mat2(stft, segments)
-
         Rn4bf = None
 
-        # fix_prev_idx = 0
         # 3. Level 2 Loop (Over Segments)
         for seg_idx, seg in enumerate(segments):
             assert (
                 seg.num_sources == 0 if seg_idx == 0 else True
             ), "First segment must have 0 sources."
 
-            # if len(id_estimates) == 8:
-            #     a = 1  # Debugging breakpoint
-
             # Extract STFT for this segment
             # seg_stft: [F, M, T_seg]
             seg_stft = stft[:, :, seg.start : seg.end]
             T_seg = seg.end - seg.start
-
-            # Determine fixed previous noisy covariance index
-            # fix_prev_idx = int(self.fix_prev_rel_time * T_seg) - 1
 
             # Update noisy covariance matrix (uses growing/smooth average logic)
             state = self._update_noisy_cov(state, seg_stft)
@@ -592,8 +719,7 @@ class RTFScenarioProcessor:
                 else:
                     state.prev_act_rtfs = state.prev_act_rtfs[..., :0]
 
-            if -1 in id_estimates[-1]:
-                a = 1  # Debugging breakpoint
+
 
         target = {}
         target_bf = {}
@@ -609,9 +735,6 @@ class RTFScenarioProcessor:
                     stft_signal=stft, smoothing_factor=self.forgetting_factor
                 )
             elif bft in ["LCMP2", "MPDR2"]:
-                # Ry_reinit_4bf = torch.cat(
-                #     self._precompute_noisy_cov_mat(stft, segments), dim=-3
-                # )
                 R4bf = self._precompute_noisy_cov_mat2(stft, segments)
             else:
                 raise ValueError(f"Unknown bf_type: {bft}")
@@ -695,7 +818,17 @@ class RTFScenarioProcessor:
             torch.cat(target_bfs, dim=-3),  # [F, T, M, M]
         )
 
-    def _precompute_noisy_cov_mat(self, stft: torch.Tensor, segments: list[Segment]):
+    def _precompute_noisy_cov_mat(self, stft: torch.Tensor, segments: list[Segment]) -> list[torch.Tensor]:
+        """
+        Precomputes the smoothed noisy covariance matrices for each segment independently.
+
+        Args:
+            stft (torch.Tensor): The mixture STFT of shape `[F, M, T]`.
+            segments (list[Segment]): A list of Segment objects defining the scenario timeline.
+
+        Returns:
+            list[torch.Tensor]: A list of noisy covariance tensors of shape `[F, M, M]` for each segment.
+        """
         F, M, T = stft.shape
         noisy_cov_mat_all_segments = []
         seg_noisy_cov = None
@@ -714,7 +847,18 @@ class RTFScenarioProcessor:
             noisy_cov_mat_all_segments.append(seg_noisy_cov)
         return noisy_cov_mat_all_segments  # [S][F, Tseg, M, M]
 
-    def _precompute_noisy_cov_mat2(self, stft: torch.Tensor, segments: list[Segment]):
+    def _precompute_noisy_cov_mat2(self, stft: torch.Tensor, segments: list[Segment]) -> torch.Tensor:
+        """
+        Precomputes the framewise smoothed noisy covariance matrix over the entire scenario, 
+        resetting the smoothing factor at segment boundaries.
+
+        Args:
+            stft (torch.Tensor): The mixture STFT of shape `[F, M, T]`.
+            segments (list[Segment]): A list of Segment objects defining the scenario timeline.
+
+        Returns:
+            torch.Tensor: The framewise noisy covariance tensor of shape `[F, T, M, M]`.
+        """
         F, M, T = stft.shape
         # [F, T, M, M]
         instant_noisy_cov = covariance_SCM(stft.transpose(-2, -1)[..., None])
@@ -729,11 +873,16 @@ class RTFScenarioProcessor:
         )  # [F, T, M, M]
         return smoothed_noisy_cov
 
-    def _remove_ids_framewise(self, current_ids, remove_indices):
+    def _remove_ids_framewise(self, current_ids: torch.Tensor, remove_indices: torch.Tensor) -> torch.Tensor:
         """
-        current_ids: [T, K]
-        remove_indices: [T]
-        Returns: [T, K-1]
+        Removes the ID of a deactivated source from the active IDs tensor for each frame.
+
+        Args:
+            current_ids (torch.Tensor): The currently active source IDs of shape `[T, K]`.
+            remove_indices (torch.Tensor): The local indices of the sources to remove for each frame. Shape `[T]`.
+
+        Returns:
+            torch.Tensor: The remaining active source IDs of shape `[T, K-1]`.
         """
         T, K = current_ids.shape
         if K == 1:
@@ -752,10 +901,18 @@ class RTFScenarioProcessor:
         return flat_rem.view(T, K - 1)
 
     def _update_noisy_cov(
-        self, state: RTFState, segment_stft  # , fix_prev_idx
+        self, state: RTFState, segment_stft: torch.Tensor
     ) -> RTFState:
-        # assert state.noisy_cov.shape[-3] > fix_prev_idx, "fix_prev_idx out of bounds."
-        # state.prev_noisy_cov = state.noisy_cov[..., fix_prev_idx, :, :].clone()
+        """
+        Updates the noisy covariance matrix tracking within the state using a smoothed average.
+
+        Args:
+            state (RTFState): The current state of the estimation process.
+            segment_stft (torch.Tensor): The STFT audio for the current segment.
+
+        Returns:
+            RTFState: The updated state object.
+        """
         state.noisy_cov = smoothCovarianceMatrix(
             stft_signal=segment_stft,
             smoothing_factor=self.forgetting_factor,
@@ -769,6 +926,15 @@ class RTFScenarioProcessor:
         return state
 
     def _segment_batch_cov(self, seg_stft: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the weighted Spatial Covariance Matrix over an entire segment.
+
+        Args:
+            seg_stft (torch.Tensor): The STFT audio for the current segment of shape `[F, M, T_seg]`.
+
+        Returns:
+            torch.Tensor: The computed covariance matrix of shape `[F, M, M]`.
+        """
         # segment_stft: [F, M, T_seg]
         # Returns: [F, M, M]
         return weighted_SCM(
@@ -776,7 +942,17 @@ class RTFScenarioProcessor:
             weights=self.seg_cov_win(seg_stft),  # Full weightes average over segment
         )
 
-    def _update_noise_cov_and_reset(self, state: RTFState, segment_stft) -> RTFState:
+    def _update_noise_cov_and_reset(self, state: RTFState, segment_stft: torch.Tensor) -> RTFState:
+        """
+        Updates the noise covariance matrix during a 0-source segment and resets the noisy covariance tracking.
+
+        Args:
+            state (RTFState): The current state of the estimation process.
+            segment_stft (torch.Tensor): The STFT audio for the 0-source segment.
+
+        Returns:
+            RTFState: The updated state object with a refined noise covariance matrix.
+        """
         old_noise_cov = state.noise_cov
         T_old = state.noise_cov_est_frames
         T_seg = segment_stft.shape[2]
@@ -805,13 +981,45 @@ class RTFScenarioProcessor:
         return state
 
     def _pool_estimates(self, rtf_seq: torch.Tensor, index: int) -> torch.Tensor:
+        """
+        Pools the RTF estimates across the time dimension for a given local source index.
+
+        Args:
+            rtf_seq (torch.Tensor): The framewise RTF estimates of shape `[F, T, M, K]`.
+            index (int): The local source index to pool.
+
+        Returns:
+            torch.Tensor: The pooled RTF vector of shape `[F, M, 1]`.
+        """
         # rtf_seq: [F, T, M, 1]
         # Simple mean pooling over time
         return rtf_seq[..., index, :, :]  # [F, M, 1]
 
     def _estimate_deactivated_source(
-        self, segment_stft, noise_cov, noisy_cov, old_rtfs, old_noisy_cov, **kwargs
-    ):
+        self, 
+        segment_stft: torch.Tensor, 
+        noise_cov: torch.Tensor, 
+        noisy_cov: torch.Tensor, 
+        old_rtfs: torch.Tensor, 
+        old_noisy_cov: torch.Tensor, 
+        **kwargs
+    ) -> torch.Tensor:
+        """
+        Determines which previously active source has deactivated during a deactivation event segment.
+
+        Uses beamforming power tracking to identify which source's energy has vanished.
+
+        Args:
+            segment_stft (torch.Tensor): The STFT audio for the deactivation segment.
+            noise_cov (torch.Tensor): The noise covariance matrix.
+            noisy_cov (torch.Tensor): The noisy covariance matrix tracking.
+            old_rtfs (torch.Tensor): The previously active RTF vectors.
+            old_noisy_cov (torch.Tensor): The noisy covariance before the deactivation.
+            **kwargs: Additional configuration parameters for the estimator.
+
+        Returns:
+            torch.Tensor: The framewise local indices of the deactivated source. Shape `[T_seg]`.
+        """
         # Check oracle mode
         if isinstance(self.rtf_estimator, Oracle):
             return self._estimate_deactivated_source_oracle(old_rtfs, **kwargs)
@@ -836,13 +1044,11 @@ class RTFScenarioProcessor:
         rtfsMXDR = old_rtfs.unsqueeze(-3).unsqueeze(0).transpose(0, -1)
 
         Ry_grow = growing_average_SCM(segment_stft)
-        # Ry_grow[..., :6, :, :] = regularize(Ry_grow[..., :6, :, :], reg_factor=1e-1)
         c = 0
         meas1 = None
         for covMat2min in [noisy_cov]:  # [noise_cov.unsqueeze(-3), Ry_grow, noisy_cov]:
             c += 1
             for gains, rtfs_constraint, b in [
-                # (gainsMXDR, rtfsMXDR, "M"),
                 (gainsLCMX, rtfsLCMX, "L"),
             ]:
                 out = Beamformer(covMat2min, rtfs_constraint, gains, framewise_stft)[
@@ -853,17 +1059,7 @@ class RTFScenarioProcessor:
                     torch.arange(meas0.shape[-1], device=meas0.device) + 1
                 )
 
-                if False:
-                    import matplotlib.pyplot as plt
 
-                    plt.figure()
-                    plt.plot(meas0.mT.cpu().numpy())
-                    plt.savefig(f"Playground/plot0_{c}_{b}.png")
-                    plt.close()
-                    plt.figure()
-                    plt.plot(meas1.mT.cpu().numpy())
-                    plt.savefig(f"Playground/plot1_{c}_{b}.png")
-                    plt.close()
 
         if meas1 is not None:
             return meas1.argmin(dim=0)
