@@ -9,8 +9,14 @@ from muse_toolbox.models.source_counting.estimators.base_estimator import (
     BaseSourceCountEstimator,
 )
 from losses import BaseLoss
-from .math4torch import *
-from .sigproc4torch import *
+
+from .dsp.acoustic_simulation import convolve_white2microphone
+from .dsp.transforms import STFTtransform
+from .math.complex_angles import hermitian_angle
+from .math.covariance import covariance_SCM
+from .math.matrix_ops import peigvech
+from .tensor_ops import *
+from .system import *
 from pathlib import Path
 from typing import Union, overload, TypeVar, cast, Any
 import warnings

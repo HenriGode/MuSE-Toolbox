@@ -9,8 +9,20 @@ import natsort
 import glob
 import itertools as it
 import torch
-from .math4torch import *
-from .sigproc4torch import *
+
+from .dsp.acoustic_simulation import convolve_clean2microphone, convolve_white2microphone
+from .dsp.stats import coherenceMatrix, gmsc, smoothCovarianceMatrix
+from .dsp.transforms import STFTtransform
+from .dsp.whitening import noise_subtraction, noise_whitening
+from .math.complex_angles import hermitian_angle
+from .math.conversions import db2amp, pow2db
+from .math.covariance import covariance_SCM, make2covariance_matrix
+from .math.geometry import slerp
+from .math.matrix_ops import characteristic_subspace, characteristic_subspace_h, makeHermitian, makeMatrixUnitNorm, makeVectorUnitNorm, oblique_projection, orthogonal_complement, orthogonal_projection, parallel_projection, peigvech, regularize, trace
+from .math.stochastics import randdir, wmean
+from .math.windowing import exp_windowing, windowing
+from .tensor_ops import *
+from .system import *
 from .metrics4torch import *
 import pickle
 from typing import Union, Tuple, List
@@ -1112,66 +1124,7 @@ class RTFestimator:
         plt.savefig("Playground/Test2.png")
 
 
-def covblockwhiten(Ry: torch.Tensor, Rn: torch.Tensor, G: torch.Tensor) -> torch.Tensor:
-    """
-    Estimates the RTF vector of a newly activating source using the Covariance Blocking and Whitening (CBW) method.
 
-    Implements the Covariance Blocking and Whitening (CBW) method for successive Relative Transfer Function (RTF)
-    vector estimation in multi-speaker scenarios.
-
-    Reference:
-    Gode, H., & Doclo, S. (2023, October).
-    Covariance Blocking and Whitening Method for Successive Relative Transfer Function Vector Estimation in Multi-Speaker Scenarios.
-    In 2023 IEEE Workshop on Applications of Signal Processing to Audio and Acoustics (WASPAA) (pp. 1-5). IEEE.
-
-    Args:
-        Ry (torch.Tensor): Covariance matrix of the noisy signal.
-        Rn (torch.Tensor): Covariance matrix of the noise.
-        G (torch.Tensor): RTF vector of the first speaker.
-
-    Returns:
-        torch.Tensor: Estimated RTF vector of the second speaker (unit norm).
-    """
-
-    # number of microphones
-    M = G.shape[-2]
-    # number of sources
-    N = G.shape[-1] + 1
-
-    # assert M >= 2*N-1, "Number of microphones must be at least 2 times the number of sources minus 1."
-    if M < 2 * N - 1:
-        print(
-            "Warning: Number of microphones should be at least 2 times the number of sources minus 1."
-        )
-
-    # Step 1: Compute the dimension-reduced residual maker matrix P⊥_g
-    P_G_perp_r = orthogonal_projection(G, "exact")[..., : M - N + 1]
-
-    # Step 3: Block the first speaker and whiten the noise
-    Rn_blocked = Rn @ P_G_perp_r
-    Ry_blocked = Ry @ P_G_perp_r
-    Rn_blocked_pinv = torch.linalg.pinv(Rn_blocked)
-    Rw_y = Rn_blocked_pinv @ Ry_blocked - torch.eye(
-        M - N + 1, device=Rn_blocked.device, dtype=Rn_blocked.dtype
-    )
-
-    # Step 4: Extract transformed RTF vectors using SVD
-    U, _, Vh = torch.linalg.svd(Rw_y, full_matrices=False)
-    qL = U[..., :, [0]]
-    qR = Vh.mH[..., :, [0]]
-
-    # Step 5: Solve for the weighting factor α
-    B = torch.cat([Rn_blocked_pinv, P_G_perp_r.mH], dim=-2)
-    P_B_perp = orthogonal_projection(B, "exact")
-    P_B_L = P_B_perp[..., : (M - N + 1)]
-    P_B_R = P_B_perp[..., (M - N + 1) :]
-    alpha = -torch.linalg.pinv(P_B_R @ qR) @ (P_B_L @ qL)
-
-    # Step 6: Estimate the scaled RTF vector and normalize
-    h_tilde = torch.linalg.pinv(B) @ torch.cat([qL, qR * alpha], dim=-2)
-    h_est = makeVectorUnitNorm(h_tilde)
-
-    return h_est
 
 
 def ps(tensorlist: List[torch.Tensor]):

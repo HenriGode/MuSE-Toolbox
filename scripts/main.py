@@ -4,6 +4,9 @@ This script acts as the Hydra execution entry point, handling global setup
 and dispatching to the correct pipeline based on the provided configuration.
 """
 
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import logging
 import hydra
 import torch
