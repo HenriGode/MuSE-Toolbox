@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Optional, Tuple, Union
 
 import anf_generator as anf
 import numpy as np
@@ -61,7 +60,7 @@ def convolve_white2microphone(
 def rir2rtf(
     rir: torch.Tensor,
     transform: STFTtransform,
-    ref_mic: Optional[int] = None,
+    ref_mic: int | None = None,
     signal_len: int = 1600000,
 ) -> torch.Tensor:
     """
@@ -133,11 +132,11 @@ def simRIR_shoebox(
     room_dim: list,
     mic_positions: np.ndarray,
     source_positions: np.ndarray,
-    noise_positions: Optional[np.ndarray] = None,
-    noise_signal: Optional[np.ndarray] = None,
+    noise_positions: np.ndarray | None = None,
+    noise_signal: np.ndarray | None = None,
     rt60: float = 0.3,
     fs: int = 16000,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """
     Simulate room impulse responses (RIRs) and optionally diffuse noise in a shoebox room.
 
@@ -222,8 +221,8 @@ def simRIR_shoebox_PRA(
     room_dim: list,
     mic_positions: np.ndarray,
     source_positions: np.ndarray,
-    noise_positions: Optional[np.ndarray] = None,
-    noise_signal: Optional[np.ndarray] = None,
+    noise_positions: np.ndarray | None = None,
+    noise_signal: np.ndarray | None = None,
     rt60: float = 0.3,
     fs: int = 16000,
 ) -> torch.Tensor:
@@ -334,7 +333,7 @@ def calculate_t60(
 
 def save_rirNoise2wav(
     rirs: torch.Tensor,
-    noise: Optional[torch.Tensor],
+    noise: torch.Tensor | None,
     roomname: str,
     arrayname: str,
     noisename: str,
@@ -414,7 +413,7 @@ def save_rirNoise2wav(
 
 def simDiffuseNoise(
     room: pra.Room,
-    source_positions: Optional[np.ndarray],
+    source_positions: np.ndarray | None,
     signal: np.ndarray,
     signal_length: int,
 ) -> torch.Tensor:

@@ -1,18 +1,20 @@
-import os
-from abc import abstractmethod
-import lightning as pl
-import torch
-import wandb
-from lightning.pytorch.callbacks.callback import Callback
-from torchmetrics import MetricCollection
-import pandas as pd
-import matplotlib.pyplot as plt
 import inspect
 import logging
-from typing import Sequence, Optional, Any
+import os
+from abc import abstractmethod
+from typing import Any
 
-from muse_toolbox.utils import HeterogeneousBatch
-import losses, metrics, utilities
+import lightning as pl
+import losses
+import metrics
+import pandas as pd
+import torch
+import utilities
+from muse_toolbox.utils import STFTtransform
+import wandb
+from torchmetrics import MetricCollection
+
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 
 log = logging.getLogger(__name__)
 
@@ -65,15 +67,15 @@ class BaseLitModel(pl.LightningModule):
         self,
         model_name: str,
         batch_size: int = 1,
-        loss_config: Optional[dict] = None,
-        optimizer_config: Optional[dict] = None,
-        lr_scheduler_config: Optional[dict] = None,
+        loss_config: dict | None = None,
+        optimizer_config: dict | None = None,
+        lr_scheduler_config: dict | None = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
-        metrics_train: Optional[dict] = None,
-        metrics_val: Optional[dict] = None,
-        metrics_test: Optional[dict] = None,
-        transform: Optional[utilities.STFTtransform] = None,
+        metrics_train: dict | None = None,
+        metrics_val: dict | None = None,
+        metrics_test: dict | None = None,
+        transform: STFTtransform | None = None,
         **kwargs,
     ):
         super().__init__()

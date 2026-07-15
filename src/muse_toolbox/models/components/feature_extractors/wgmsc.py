@@ -1,18 +1,21 @@
-import torch
 import logging
 from typing import Any
+
+import torch
+
 from muse_toolbox.utils import (
     STFTtransform,
-    smoothCovarianceMatrix,
-    windowedCovarianceMatrix,
-    noise_whitening_robust,
     coherenceMatrix,
-    gmsc,
-    trace,
-    wmean,
-    regularize,
     get_real_dtype,
+    gmsc,
+    noise_whitening_robust,
+    regularize,
+    smoothCovarianceMatrix,
+    trace,
+    windowedCovarianceMatrix,
+    wmean,
 )
+
 from .base_feature import BaseFeatureExtractor
 
 log = logging.getLogger(__name__)

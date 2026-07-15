@@ -1,5 +1,5 @@
 """Losses for source counting."""
 
-from .cross_entropy import CrossEntropy
+from muse_toolbox.losses.source_counting.cross_entropy import CrossEntropy
 
 __all__ = ["CrossEntropy"]

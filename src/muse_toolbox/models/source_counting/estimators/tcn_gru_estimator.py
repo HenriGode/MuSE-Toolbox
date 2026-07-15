@@ -1,11 +1,13 @@
+import logging
+from typing import Any
+
 import torch
 import torch.nn as nn
-import logging
-from typing import Any, Union
 
-from .base_estimator import BaseSourceCountEstimator
 from muse_toolbox.models.components.nn_blocks.conv_tasnet import TCN
 from muse_toolbox.utils import STFTtransform
+
+from .base_estimator import BaseSourceCountEstimator
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class TCN_GRU_estimator(BaseSourceCountEstimator):
         tcn_stack: int,
         tcn_kernel: int,
         # GRU parameters
-        gru_hidden_size: Union[int, float],
+        gru_hidden_size: int | float,
         gru_num_layers: int = 1,
         # Common parameters
         skip_connection: bool = False,

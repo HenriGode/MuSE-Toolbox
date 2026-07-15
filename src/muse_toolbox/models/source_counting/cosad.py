@@ -1,11 +1,10 @@
-import torch
+import logging
+from typing import Any
+
+from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
-from muse_toolbox.utils import HeterogeneousBatch
-import muse_toolbox.utils as utilities
-from muse_toolbox.models.base_model import BaseLitModel
-from typing import Optional, Any
-import logging
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch, STFTtransform
 
 log = logging.getLogger(__name__)
 
@@ -22,16 +21,16 @@ class COSADmodule(BaseLitModel):
 
     def __init__(
         self,
-        transform: utilities.STFTtransform,
+        transform: STFTtransform,
         feature_extractor: BaseFeatureExtractor,
         source_count_estimator: BaseSourceCountEstimator,
         batch_size: int = 1,
         loss_config: dict[str, Any] = {"CrossEntropy": None},
-        optimizer_config: Optional[dict[str, Any]] = None,
-        lr_scheduler_config: Optional[dict[str, Any]] = None,
-        metrics_train: Optional[dict[str, Any]] = None,
-        metrics_val: Optional[dict[str, Any]] = None,
-        metrics_test: Optional[dict[str, Any]] = None,
+        optimizer_config: dict[str, Any] | None = None,
+        lr_scheduler_config: dict[str, Any] | None = None,
+        metrics_train: dict[str, Any] | None = None,
+        metrics_val: dict[str, Any] | None = None,
+        metrics_test: dict[str, Any] | None = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):

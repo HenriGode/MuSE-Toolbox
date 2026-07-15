@@ -4,10 +4,12 @@ This module provides a dummy PyTorch model that loads precomputed SAD
 predictions from disk instead of calculating them on the fly.
 """
 
-import os
-import torch
 import logging
-from muse_toolbox.utils import HeterogeneousBatch
+import os
+
+import torch
+
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 
 log = logging.getLogger(__name__)
 

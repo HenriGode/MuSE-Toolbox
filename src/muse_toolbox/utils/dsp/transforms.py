@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Union
+from collections.abc import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,7 +7,7 @@ import torch
 from scipy import interpolate
 
 from muse_toolbox.utils.math.conversions import db2pow, pow2db
-from muse_toolbox.utils.math.stochastics import wmean
+from muse_toolbox.utils.math.stats import wmean
 from muse_toolbox.utils.system import memory
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class STFTtransform:
         frame_length: float = 32e-3,
         frame_shift: float = 16e-3,
         sampling_frequency: float = 16e3,
-        window_type: Union[str, callable, torch.Tensor] = "torch.hann_window(x).sqrt()",
+        window_type: str | Callable | torch.Tensor = "torch.hann_window(x).sqrt()",
         remove_DC: bool = True,
         remove_Nyquist: bool = True,
     ) -> None:
@@ -43,7 +43,7 @@ class STFTtransform:
             frame_length (float): Window size in seconds. Defaults to 32e-3.
             frame_shift (float): Shift size in seconds. Defaults to 16e-3.
             sampling_frequency (float): Sampling frequency in Hz. Defaults to 16e3.
-            window_type (Union[str, callable, torch.Tensor]): The window function to apply. Defaults to "torch.hann_window(x).sqrt()".
+            window_type (Union[str, Callable, torch.Tensor]): The window function to apply. Defaults to "torch.hann_window(x).sqrt()".
             remove_DC (bool): Whether to remove the DC component. Defaults to True.
             remove_Nyquist (bool): Whether to remove the Nyquist frequency component. Defaults to True.
         """
@@ -97,7 +97,7 @@ class STFTtransform:
             else:
                 try:
                     self.window = eval(
-                        self.window_type,
+                        window_type,
                         {
                             "x": self.nfft,
                             "periodic": True,
@@ -193,7 +193,7 @@ class STFTtransform:
         stft_signal: torch.Tensor,
         DC_zero: bool = True,
         Nyquist_zero: bool = True,
-        num_samples: Optional[int] = None,
+        num_samples: int | None = None,
     ) -> torch.Tensor:
         """
         Apply inverse STFT to decode the input signal back to time domain.
@@ -270,7 +270,7 @@ class STFTtransform:
         return time_signal_reshape
 
     def times2frames(
-        self, time: Union[torch.Tensor, float, int, list, tuple], method: str = "center"
+        self, time: torch.Tensor | float | int | list | tuple, method: str = "center"
     ) -> torch.Tensor:
         """
         Convert time (in seconds) to frame indices.
@@ -293,7 +293,7 @@ class STFTtransform:
                 )
 
     def times2samples(
-        self, time: Union[torch.Tensor, float, int, list, tuple]
+        self, time: torch.Tensor | float | int | list | tuple
     ) -> torch.Tensor:
         """
         Convert time (in seconds) to sample indices.
@@ -327,7 +327,7 @@ class STFTtransform:
                     f"Unknown method '{method}' for converting frames to time."
                 )
 
-    def samples2frames(self, samples: Union[torch.Tensor, int]) -> torch.Tensor:
+    def samples2frames(self, samples: torch.Tensor | int) -> torch.Tensor:
         """
         Convert sample indices to frame indices.
         
@@ -341,7 +341,7 @@ class STFTtransform:
             samples = torch.tensor(samples, dtype=torch.float64)
         return (samples / self.hop_length).round().to(torch.int64)
 
-    def frames2samples(self, frames: Union[torch.Tensor, int]) -> torch.Tensor:
+    def frames2samples(self, frames: torch.Tensor | int) -> torch.Tensor:
         """
         Convert frame indices to sample indices.
         
@@ -384,7 +384,7 @@ class STFTtransform:
         return quantity.index_select(dim, sample_indices)
 
     def frames2samples_quantity(
-        self, quantity: torch.Tensor, num_samples: Optional[int] = None, dim: int = -1
+        self, quantity: torch.Tensor, num_samples: int | None = None, dim: int = -1
     ) -> torch.Tensor:
         """
         Convert a frame-based quantity tensor to a sample-based quantity tensor.
@@ -436,7 +436,7 @@ class STFTtransform:
 
         return output.transpose(dim, -1)
 
-    def samples2times(self, samples: Union[torch.Tensor, int]) -> torch.Tensor:
+    def samples2times(self, samples: torch.Tensor | int) -> torch.Tensor:
         """
         Convert sample indices to time (in seconds).
         
@@ -474,7 +474,7 @@ class STFTtransform:
         """
         return (freqs / self.sampling_frequency * self.nfft).round().to(torch.int64) - 1
 
-    def bins2freq(self, bins: Union[torch.Tensor, int]) -> torch.Tensor:
+    def bins2freq(self, bins: torch.Tensor | int) -> torch.Tensor:
         """
         Convert STFT bin indices to frequencies.
         
@@ -575,7 +575,7 @@ class Frequency_Weighting:
     Provides frequency-dependent weighting (e.g., LTASS - Long-Term Average Speech Spectrum).
     """
 
-    def __init__(self, name: str = "LTASS", freqlist: Optional[list] = None, weightlist: Optional[list] = None) -> None:
+    def __init__(self, name: str = "LTASS", freqlist: list | None = None, weightlist: list | None = None) -> None:
         """
         Initialize the Frequency Weighting.
 
@@ -606,7 +606,7 @@ class Frequency_Weighting:
         log.debug(f"Initialized Frequency_Weighting '{self.name}'.")
 
     def weights(
-        self, transform: STFTtransform = STFTtransform(), device: Union[torch.device, str] = "cpu"
+        self, transform: STFTtransform = STFTtransform(), device: torch.device | str = "cpu"
     ) -> torch.Tensor:
         """
         Compute interpolated weights in the linear power domain for the STFT frequencies.

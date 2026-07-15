@@ -2,8 +2,8 @@
 
 import torch
 import torch.nn as nn
-from typing import Optional
-from muse_toolbox.losses.common.base_loss import BaseLoss
+from typing import Any
+from muse_toolbox.losses.base_loss import BaseLoss
 
 
 class CrossEntropy(BaseLoss):
@@ -15,7 +15,7 @@ class CrossEntropy(BaseLoss):
     """
 
     def __init__(
-        self, weight: Optional[torch.Tensor] = None, reduction: str = "mean", **kwargs
+        self, weight: torch.Tensor | None = None, reduction: str = "mean", **kwargs: Any
     ):
         """Initializes the CrossEntropy loss.
 

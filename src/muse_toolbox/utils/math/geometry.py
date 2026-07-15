@@ -1,12 +1,11 @@
 # %% Coordinate Transformations
 
 import logging
-from typing import Union, Tuple, Optional, List
 
 import torch
 
-from .complex_angles import atan2, hermitian_angle
 from ..tensor_ops import check_broadcastable
+from .complex_angles import atan2, hermitian_angle
 
 log = logging.getLogger(__name__)
 
@@ -146,7 +145,7 @@ def slerp(
 
 
 # W.-K. Ma et al., A signal processing perspective on hyperspectral unmixing: Insights from remote sensing. IEEE Signal Process Mag 31(1), 67–81 (2014)
-def successive_projections(X: torch.Tensor, num_selections: int) -> List[int]:
+def successive_projections(X: torch.Tensor, num_selections: int) -> list[int]:
     """
     Performs the Successive Projections Algorithm (SPA) to select a set of
     representative features from the dataset.
@@ -193,10 +192,10 @@ def successive_projections(X: torch.Tensor, num_selections: int) -> List[int]:
 
 
 def moduloshift(
-    vals: Union[torch.Tensor, float, complex],
-    real_interval: Optional[Tuple[float, float]] = None,
-    imag_interval: Optional[Tuple[float, float]] = None,
-) -> Union[torch.Tensor, float, complex]:
+    vals: torch.Tensor | float | complex,
+    real_interval: tuple[float, float] | None = None,
+    imag_interval: tuple[float, float] | None = None,
+) -> torch.Tensor | float | complex:
     """
     Shift values into specified intervals using modulo arithmetic.
     Supports both real and complex inputs.

@@ -1,11 +1,10 @@
 import logging
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from muse_toolbox.utils.dsp.stats import (
+from muse_toolbox.utils.dsp.signal_stats import (
     coherenceMatrix,
     gmsc,
     smoothCovarianceMatrix,
@@ -21,8 +20,8 @@ def plot_spectrogram(
     transform: STFTtransform,
     title: str = "Spectrogram",
     clabel: str = "Magnitude (dB)",
-    clim: Optional[tuple] = None,
-    savename: Optional[str] = None,
+    clim: tuple | None = None,
+    savename: str | None = None,
 ) -> None:
     """
     Plots the spectrogram of the input signal based on the provided transform configuration.
@@ -87,7 +86,7 @@ def plot_phaseogram(
     transform: STFTtransform,
     title: str = "Phaseogram",
     clabel: str = "Phase (rad)",
-    savename: Optional[str] = None,
+    savename: str | None = None,
 ) -> None:
     """
     Plots the phaseogram of the input signal based on the provided transform configuration.
@@ -143,8 +142,8 @@ def plot_phaseogram(
 def plot_coherence(
     STFT_signal: torch.Tensor,
     transform: STFTtransform,
-    title: Optional[str] = None,
-    savename: Optional[str] = None,
+    title: str | None = None,
+    savename: str | None = None,
     mode: str = "batch",
 ) -> None:
     """

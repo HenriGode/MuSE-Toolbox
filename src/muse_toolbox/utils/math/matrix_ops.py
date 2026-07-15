@@ -1,16 +1,16 @@
 # %% Linear Algebra (Matrices)
 
 import logging
-from typing import Any, Union, Tuple, List, Optional
+from typing import Any
 
 import torch
 
+from ..system import run_torch_function_with_settings
 from ..tensor_ops import (
     check_all_elements_equal,
     generalized_cat,
     match_dims_to,
 )
-from ..system import run_torch_function_with_settings
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def cpu_gen_solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     return torch.linalg.lstsq(A.cpu(), B.cpu()).solution.to(A.device)
 
 
-def effective_rank(matrix: torch.Tensor, order: Union[float, str] = 1) -> torch.Tensor:
+def effective_rank(matrix: torch.Tensor, order: float | str = 1) -> torch.Tensor:
     """
     Computes the effective rank of a matrix based on the entropy of its singular values.
 
@@ -178,7 +178,7 @@ def evd2matrix_h(eigvals: torch.Tensor, eigvecs: torch.Tensor) -> torch.Tensor:
     return makeHermitian(eigvecs @ (eigvals[..., None] * eigvecs.mH))
 
 
-def makeMatrixUnitNorm(matrix: torch.Tensor, order: Union[int, str] = "fro") -> torch.Tensor:
+def makeMatrixUnitNorm(matrix: torch.Tensor, order: int | str = "fro") -> torch.Tensor:
     """
     Normalizes a matrix to have unit norm.
     """
@@ -188,7 +188,7 @@ def makeMatrixUnitNorm(matrix: torch.Tensor, order: Union[int, str] = "fro") -> 
 
 
 def makeMatricesMaxUnitNorm(
-    matrix: torch.Tensor, dependent_dim: int = -3, order: Union[int, str] = "fro"
+    matrix: torch.Tensor, dependent_dim: int = -3, order: int | str = "fro"
 ) -> torch.Tensor:
     """
     Normalizes a batch of matrices such that the maximum norm across a dimension is 1.
@@ -203,14 +203,14 @@ def makeMatricesMaxUnitNorm(
     )
 
 
-def makeVectorUnitNorm(vector: torch.Tensor, order: Union[float, str] = 2) -> torch.Tensor:
+def makeVectorUnitNorm(vector: torch.Tensor, order: float | str = 2) -> torch.Tensor:
     """
     Normalizes a vector to have unit norm.
     """
     return vector / torch.linalg.vector_norm(vector, ord=order, dim=(-2), keepdim=True)
 
 
-def makeVectorUnitNorm_inPlace(vector: torch.Tensor, order: Union[float, str] = 2):
+def makeVectorUnitNorm_inPlace(vector: torch.Tensor, order: float | str = 2):
     """
     Normalizes a vector to have unit norm in-place.
     """
@@ -225,7 +225,7 @@ def peigvech(matrix: torch.Tensor) -> torch.Tensor:
     return characteristic_subspace_h(matrix)
 
 
-def characteristic_subspace_h(matrix: torch.Tensor, order: List[int] = [0]) -> torch.Tensor:
+def characteristic_subspace_h(matrix: torch.Tensor, order: list[int] = [0]) -> torch.Tensor:
     """
     Returns the characteristic subspace (eigenvectors corresponding to specific eigenvalues)
     of a Hermitian matrix.
@@ -233,7 +233,7 @@ def characteristic_subspace_h(matrix: torch.Tensor, order: List[int] = [0]) -> t
     return mytorch_eigh(matrix)[1].flip(dims=(-1,))[..., order]
 
 
-def characteristic_subspace(matrix: torch.Tensor, order: List[int] = [0], left: bool = True) -> torch.Tensor:
+def characteristic_subspace(matrix: torch.Tensor, order: list[int] = [0], left: bool = True) -> torch.Tensor:
     """
     Returns the characteristic subspace of a matrix using SVD.
     """

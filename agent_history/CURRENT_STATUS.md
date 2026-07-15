@@ -1,5 +1,5 @@
 # MuSE-Toolbox Development Status & Agent History
-**Last Updated:** 2026-07-13 18:34:53 (CEST)
+**Last Updated:** 2026-07-15 22:52:00 (CEST)
 
 *This document captures the entire history of the automated migration and refactoring of the `framewiseSpeakerCounting` project into the modular `MuSE-Toolbox` package. It consolidates all past agent plans, historical roadmaps, and configuration setups into one master ledger.*
 
@@ -37,23 +37,34 @@ We strictly applied our **5-Point Standard Operating Procedure (SOP)** across th
 ### 4. Pipelines
 - **PyTorch Lightning Wrappers:** Stubbed out `pipelines/source_counting_pipeline.py` and `pipelines/rtf_estimation_pipeline.py` as clean orchestrators capable of dynamically loading Oracle parameters or pre-computed SAD files.
 
+### 5. Utilities Refactoring (Math & DSP)
+- **Dismantled Monoliths:** Split `math4torch.py` into 7 modular files and `sigproc4torch.py` into 9 modular files inside `utils/math/` and `utils/dsp/`.
+- **Strict Explicit Imports (Option 3):** Eliminated all wildcard (`*`) imports for these modules. The `__init__.py` files now act as clean facades defining strict `__all__` exports.
+- **Dependency Cleanup:** Updated `data_utils.py` and `util_classes.py` to use explicit, targeted imports from the new `math` and `dsp` modules.
+
+### 6. IDE Standardization
+- **Type Checking & Formatting:** Configured the VS Code workspace (`.vscode/settings.json` and `pyrightconfig.json`) to enforce Black formatting on save and strict Pyright/Pylance type checking and import validation.
+
+### 7. Core Directories SOP Application (`metrics`, `losses`, `utils`)
+- **Metrics Refactoring:** Flattened the `metrics/common/` directory. Applied strict Python 3.10+ typing, absolute imports, and Google-style docstrings to `BaseMetric`, `RefMetric`, and all RTF/SAD metrics (e.g., `fwssnr.py`).
+- **Losses Refactoring:** Flattened `losses/common/`, moving `base_loss.py` directly into `losses/`. Modernized typing across `cross_entropy.py` and removed relative imports.
+- **Utils Cleanup:** Applied the SOP to `debug_utils.py`, `profiling_utils.py`, `system.py`, `tensor_ops.py`, etc., aggressively replacing `print()` statements with standard `logging.getLogger(__name__)` calls. Deleted the unused `model_utils.py`.
+- **Codebase Assessment:** Generated a formal architecture review now stored in `agent_history/codebase_assessment.md`.
+
 ---
 
 ## 🚧 What Is Open (The Roadmap)
 
 If you are resuming development, here are the direct next steps needed to complete the project functionality:
 
-- [ ] **1. Apply the 5-Point SOP to the `utils` Directory**
-  - Files like `data_utils.py` and `util_classes.py` still contain dense matrix logic and native `print` statements. They need strict typing, Google-style docstrings, and `logging`.
-  
-- [ ] **2. Formalize the PyTorch Lightning Modules**
+- [ ] **1. Formalize the PyTorch Lightning Modules**
   - Extract the specific training step logic from the legacy codebase into `COSADmodule` and `RTFmodule`. Plug these completed LitModules into the new skeletal `pipelines/` scripts.
 
-- [ ] **3. Setup the AMI Dataset**
+- [ ] **2. Setup the AMI Dataset**
   - Introduce the full AMI corpus integration inside the `data/` directory. Build out the `Database`, `Dataset`, and `DataModule` wrappers.
 
-- [ ] **4. Migrate Remaining Experiments to Hydra**
+- [ ] **3. Migrate Remaining Experiments to Hydra**
   - Use the `configs/experiment/J1_seglen.yaml` template to port the rest of the legacy experiment scripts (like `J2_deactivation` or `PRA_ANF`) into the `configs/experiment/` directory.
 
-- [ ] **5. Setup the Testing Framework**
+- [ ] **4. Setup the Testing Framework**
   - Establish a formal `pytest` suite. Write unit tests for the core feature extractors, TCN blocks, and estimators to rigorously lock down their tensor shapes and behavior.

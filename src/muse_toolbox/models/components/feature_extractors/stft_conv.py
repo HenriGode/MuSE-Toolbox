@@ -1,11 +1,13 @@
-import torch
-import torch.nn as nn
 import logging
 from typing import Any
 
-from .base_feature import BaseFeatureExtractor
-from muse_toolbox.utils import STFTtransform
+import torch
+import torch.nn as nn
+
 from muse_toolbox.models.components.nn_blocks.causal_conv1d import CausalConv1d
+from muse_toolbox.utils import STFTtransform
+
+from .base_feature import BaseFeatureExtractor
 
 log = logging.getLogger(__name__)
 

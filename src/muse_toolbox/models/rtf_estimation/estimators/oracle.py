@@ -1,9 +1,11 @@
-import torch
 import logging
 from typing import Any
 
+import torch
+
+from muse_toolbox.utils import Segment, hermitian_angle, randdir
+
 from .base_rtf_estimator import BaseRTFestimator
-from muse_toolbox.utils import Segment, randdir, hermitian_angle
 
 log = logging.getLogger(__name__)
 

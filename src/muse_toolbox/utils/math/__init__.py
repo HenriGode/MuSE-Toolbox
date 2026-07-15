@@ -1,32 +1,74 @@
-from .conversions import (
-    db2amp, db2pow, amp2db, pow2db, rad2deg, deg2rad
-)
 from .complex_angles import (
-    hermitian_angle, complex_angle, subspace_angles, atan2, atan3, quadrant
+    atan2,
+    atan3,
+    complex_angle,
+    hermitian_angle,
+    quadrant,
+    subspace_angles,
 )
+from .conversions import amp2db, db2amp, db2pow, deg2rad, pow2db, rad2deg
 from .covariance import (
-    covariance_SCM, growing_average_SCM, weighted_SCM, crossCovariance_SCM,
-    covariance_Tyler, make2covariance_matrix, make2covariance_matrix_rel_lower_bound
+    covariance_SCM,
+    covariance_Tyler,
+    crossCovariance_SCM,
+    growing_average_SCM,
+    make2covariance_matrix,
+    make2covariance_matrix_rel_lower_bound,
+    weighted_SCM,
 )
 from .geometry import (
-    spherical2cartesian, cartesian2spherical, slerp, successive_projections, moduloshift
+    cartesian2spherical,
+    moduloshift,
+    slerp,
+    spherical2cartesian,
+    successive_projections,
 )
 from .matrix_ops import (
-    cpu_gen_solve, effective_rank, is_hermitian, is_symmetric, is_positive_definite_h,
-    is_positive_semi_definite_h, trace, makeHermitian, makeSymmetric,
-    make_positive_definite_h, evd2matrix_h, makeMatrixUnitNorm, makeMatricesMaxUnitNorm,
-    makeVectorUnitNorm, makeVectorUnitNorm_inPlace, peigvech, characteristic_subspace_h,
-    characteristic_subspace, matrixsqrth, orthogonal_complement, vec2diagMat,
-    parallel_projection, orthogonal_projection, oblique_projection, regularize,
-    zero2identity, mytorch_eigvalsh, mytorch_eigh
+    characteristic_subspace,
+    characteristic_subspace_h,
+    cpu_gen_solve,
+    effective_rank,
+    evd2matrix_h,
+    is_hermitian,
+    is_positive_definite_h,
+    is_positive_semi_definite_h,
+    is_symmetric,
+    make_positive_definite_h,
+    makeHermitian,
+    makeMatricesMaxUnitNorm,
+    makeMatrixUnitNorm,
+    makeSymmetric,
+    makeVectorUnitNorm,
+    makeVectorUnitNorm_inPlace,
+    matrixsqrth,
+    mytorch_eigh,
+    mytorch_eigvalsh,
+    oblique_projection,
+    orthogonal_complement,
+    orthogonal_projection,
+    parallel_projection,
+    peigvech,
+    regularize,
+    trace,
+    vec2diagMat,
+    zero2identity,
 )
-from .stochastics import (
-    randdir, randdir_orthogonal2vec, sample_complex_multivariate, gaussian, wmean,
-    norm_by_sum, deviation
+from .stats import (
+    deviation,
+    gaussian,
+    norm_by_sum,
+    randdir,
+    randdir_orthogonal2vec,
+    sample_complex_multivariate,
+    wmean,
 )
 from .windowing import (
-    windowing, windowing_conv, exp_windowing, exp_windowing_conv,
-    exp_windowing_recursive, exp_windowing_recursive_changing_factor
+    exp_windowing,
+    exp_windowing_conv,
+    exp_windowing_recursive,
+    exp_windowing_recursive_changing_factor,
+    windowing,
+    windowing_conv,
 )
 
 __all__ = [

@@ -1,6 +1,7 @@
 from typing import Any
-from .bopo import BOPO
+
 from .bop_s import BOP_S
+from .bopo import BOPO
 
 
 class BOPO_S(BOPO, BOP_S):

@@ -1,7 +1,10 @@
-import torch
 import logging
-from typing import Union, Any
+from typing import Any
+
+import torch
+
 from muse_toolbox.utils import STFTtransform, exp_windowing, to_one_hot
+
 from .base_estimator import BaseSourceCountEstimator
 
 log = logging.getLogger(__name__)
@@ -18,12 +21,12 @@ class WGMSC_Threshold_Detector(BaseSourceCountEstimator):
         input_dim: int,
         transform: STFTtransform,
         max_sources: int = 4,
-        smoothing_time_constant: Union[float, None] = 1.0,  # [s]
+        smoothing_time_constant: float | None = 1.0,  # [s]
         coherence_threshold: float = 0.5,
-        min_activation_time_difference: Union[float, None] = 1.0,  # [s]
-        smoothing_time_constant_rev: Union[float, None] = 0.5,  # [s]
+        min_activation_time_difference: float | None = 1.0,  # [s]
+        smoothing_time_constant_rev: float | None = 0.5,  # [s]
         coherence_threshold_rev: float = 0.6,
-        min_deactivation_time_difference: Union[float, None] = 0.5,
+        min_deactivation_time_difference: float | None = 0.5,
         detect_deactivations: bool = False,
     ):
         """

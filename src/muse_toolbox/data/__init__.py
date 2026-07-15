@@ -1,4 +1,13 @@
-from .datamodules.brudex import BrudexDataModule, BrudexConfig
-from .datamodules.PRA_ANF import PraAnfDataModule, PraAnfConfig
-from .base_scenario_generator import ScenarioGenerationConfig
-from .precomputed_dataset import PrecomputedDataset
+from .simulation.base_scenario_generator import ScenarioGenerationConfig
+from .datamodules.brudex import BrudexConfig, BrudexDataModule
+from .datamodules.PRA_ANF import PraAnfConfig, PraAnfDataModule
+from .components.precomputed_dataset import PrecomputedDataset
+
+__all__ = [
+    "ScenarioGenerationConfig",
+    "BrudexConfig",
+    "BrudexDataModule",
+    "PraAnfConfig",
+    "PraAnfDataModule",
+    "PrecomputedDataset",
+]

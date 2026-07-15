@@ -1,6 +1,7 @@
 from typing import Any
-from .cb import CB
+
 from .bop_w import BOP_W
+from .cb import CB
 
 
 class CB_W(CB, BOP_W):

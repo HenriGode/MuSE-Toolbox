@@ -1,10 +1,14 @@
 import torch
 import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional, List
+from muse_toolbox.metrics.base_metric import BaseMetric
 
 
 class Accuracy(BaseMetric):
+    """Accuracy evaluation metric class.
+    
+    Inherits from `BaseMetric` to compute the classification accuracy 
+    for source counting predictions versus ground truth targets.
+    """
     is_differentiable = False
     higher_is_better = True
     full_state_update = False  # Set to False for list states
@@ -12,9 +16,15 @@ class Accuracy(BaseMetric):
 
     correct_predictions: torch.Tensor
     total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]
+    per_sample_results: list[torch.Tensor]
 
     def __init__(self, *args, **kwargs):
+        """Initializes the Accuracy metric.
+
+        Args:
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
 
         # Use primitives for default values to ensure correct device placement
@@ -27,7 +37,7 @@ class Accuracy(BaseMetric):
         self.add_state("per_sample_results", default=[], dist_reduce_fx="cat")
 
         # scenario_ids is not a metric state, just a regular attribute
-        self.scenario_ids: List[str] = []
+        self.scenario_ids: list[str] = []
 
     def update(
         self,
@@ -36,6 +46,14 @@ class Accuracy(BaseMetric):
         meta: dict,
         dataloader_idx: int,
     ):
+        """Updates the Accuracy metric state with new batch data.
+
+        Args:
+            preds: List of prediction tensors.
+            targets: List of ground truth target tensors.
+            meta (dict): Dictionary with scenario metadata.
+            dataloader_idx (int): Current dataloader index.
+        """
         if self.requires_reference and targets is None:
             return
 
@@ -64,8 +82,12 @@ class Accuracy(BaseMetric):
         accuracy = self.correct_predictions.float() / self.total_samples
         return {"Accuracy": accuracy}
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
-        """Creates a DataFrame with per-sample Accuracy results."""
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Creates a DataFrame with per-sample Accuracy results.
+        
+        Returns:
+            pd.DataFrame | None: Dataframe containing scenario results.
+        """
         if not self.scenario_ids:
             return None
 

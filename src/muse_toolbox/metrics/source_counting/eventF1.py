@@ -1,11 +1,15 @@
 import torch
 import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
+from muse_toolbox.metrics.base_metric import BaseMetric
 from muse_toolbox.utils import STFTtransform
-from typing import Optional, List
 
 
 class TolerantEventF1(BaseMetric):
+    """Tolerant Event-Based F1-Score metric class.
+    
+    Inherits from `BaseMetric` to evaluate source counting tracking precision 
+    and recall, with a temporal tolerance window for activations and deactivations.
+    """
     is_differentiable = False
     higher_is_better = True
     full_state_update = False  # Important for list states
@@ -20,16 +24,24 @@ class TolerantEventF1(BaseMetric):
     fn_deact: torch.Tensor
 
     # States for per-sample dataframe (must be lists of tensors)
-    per_sample_tp_act: List[torch.Tensor]
-    per_sample_fp_act: List[torch.Tensor]
-    per_sample_fn_act: List[torch.Tensor]
-    per_sample_tp_deact: List[torch.Tensor]
-    per_sample_fp_deact: List[torch.Tensor]
-    per_sample_fn_deact: List[torch.Tensor]
+    per_sample_tp_act: list[torch.Tensor]
+    per_sample_fp_act: list[torch.Tensor]
+    per_sample_fn_act: list[torch.Tensor]
+    per_sample_tp_deact: list[torch.Tensor]
+    per_sample_fp_deact: list[torch.Tensor]
+    per_sample_fn_deact: list[torch.Tensor]
 
     def __init__(
         self, tolerance_time: float, transform: STFTtransform, *args, **kwargs
     ):
+        """Initializes the TolerantEventF1 metric.
+
+        Args:
+            tolerance_time (float): Tolerance window in seconds for event matching.
+            transform (STFTtransform): Transformer for frame/time conversions.
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
         self.tolerance_time = tolerance_time
         self.transform = transform
@@ -55,6 +67,14 @@ class TolerantEventF1(BaseMetric):
 
     def _find_events(self, count_sequence: torch.Tensor):
         # ... (implementation unchanged)
+        """Finds activation and deactivation events in a sequence of counts.
+
+        Args:
+            count_sequence (torch.Tensor): 1D tensor of source counts over time.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: Indices of activation and deactivation events.
+        """
         diffs = torch.diff(count_sequence, prepend=count_sequence.new_zeros(1))
         activations = (diffs > 0).nonzero(as_tuple=False).squeeze(1)
         deactivations = (diffs < 0).nonzero(as_tuple=False).squeeze(1)
@@ -62,6 +82,15 @@ class TolerantEventF1(BaseMetric):
 
     def _match_events(self, pred_events: torch.Tensor, true_events: torch.Tensor):
         # ... (implementation unchanged)
+        """Matches predicted events to true events within the tolerance window.
+
+        Args:
+            pred_events (torch.Tensor): Indices of predicted events.
+            true_events (torch.Tensor): Indices of ground truth events.
+
+        Returns:
+            tuple[int, torch.Tensor]: Number of true positives and a boolean mask of matched true events.
+        """
         tp = 0
         matches = torch.zeros_like(true_events, dtype=torch.bool)
         if pred_events.numel() == 0 or true_events.numel() == 0:
@@ -85,6 +114,14 @@ class TolerantEventF1(BaseMetric):
         meta: dict,
         dataloader_idx: int,
     ):
+        """Updates the F1 score metric states with new predictions and targets.
+
+        Args:
+            preds: List of prediction tensors.
+            targets: List of ground truth count tensors.
+            meta (dict): Dictionary with scenario metadata.
+            dataloader_idx (int): Current dataloader index.
+        """
         pred_counts = [torch.argmax(p, dim=-1) for p in preds]
 
         for pred_count, target in zip(pred_counts, targets):
@@ -119,6 +156,11 @@ class TolerantEventF1(BaseMetric):
 
     def compute(self) -> dict:
         # ... (implementation unchanged)
+        """Computes the final precision, recall, and F1 scores over all segments.
+
+        Returns:
+            dict: Computed values for act, deact, and overall F1 metrics.
+        """
         results = {}
         for event_type in ["act", "deact"]:
             tp = getattr(self, f"tp_{event_type}").float()
@@ -146,7 +188,12 @@ class TolerantEventF1(BaseMetric):
         results["F1score_overall"] = overall_f1
         return results
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Creates a DataFrame with per-sample event tracking results.
+        
+        Returns:
+            pd.DataFrame | None: Dataframe containing raw TP, FP, FN counts.
+        """
         if not self.scenario_ids:
             return None
 

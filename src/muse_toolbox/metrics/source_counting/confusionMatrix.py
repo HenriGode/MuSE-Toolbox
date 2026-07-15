@@ -2,20 +2,30 @@ import torch
 import wandb
 import pandas as pd
 from torchmetrics.classification import MulticlassConfusionMatrix
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional, List
+from muse_toolbox.metrics.base_metric import BaseMetric
 import matplotlib.pyplot as plt
-import io
-import PIL
 
 
 class ConfusionMatrix(BaseMetric):
+    """Confusion Matrix metric class for source counting.
+    
+    Inherits from `BaseMetric` to generate and log a multi-class 
+    confusion matrix tracking predicted vs actual active sources.
+    """
     is_differentiable = False
     higher_is_better = None
     full_state_update = True
     requires_reference = True
 
     def __init__(self, max_sources: int, stage: str, *args, **kwargs):
+        """Initializes the ConfusionMatrix metric.
+
+        Args:
+            max_sources (int): The maximum number of sources expected.
+            stage (str): The execution stage (e.g., 'val', 'test') for logging.
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
         self.num_classes = max_sources + 1
         self.conf_matrix_metric = MulticlassConfusionMatrix(
@@ -30,6 +40,14 @@ class ConfusionMatrix(BaseMetric):
         meta: dict,
         dataloader_idx: int,
     ):
+        """Updates the ConfusionMatrix metric state with new batch data.
+
+        Args:
+            preds: List of prediction tensors.
+            targets: List of ground truth target tensors.
+            meta (dict): Dictionary with scenario metadata.
+            dataloader_idx (int): Current dataloader index.
+        """
         if self.requires_reference and targets is None:
             return
 
@@ -64,10 +82,11 @@ class ConfusionMatrix(BaseMetric):
         # The visual plot is logged to W&B directly.
         return {}
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
-        """
-        The confusion matrix is an aggregate metric and does not produce per-sample results.
-        Therefore, it does not return a DataFrame.
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """The confusion matrix is an aggregate metric and does not produce per-sample results.
+        
+        Returns:
+            pd.DataFrame | None: Always returns None.
         """
         return None
 

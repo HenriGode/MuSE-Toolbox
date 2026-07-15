@@ -1,14 +1,20 @@
+import torch
+import numpy as np
+import torch.nn.functional as F
+
+
+
 def get_real_dtype(input_tensor):
     """
     Returns the real dtype corresponding to the input tensor's dtype.
     If the input tensor is complex, it returns the corresponding real dtype.
     Otherwise, it returns the dtype of the input tensor.
 
-    Parameters:
-    - input_tensor (torch.Tensor): The input tensor whose dtype is to be checked.
+    Args:
+        input_tensor (torch.Tensor): The input tensor whose dtype is to be checked.
 
     Returns:
-    - torch.dtype: The real dtype corresponding to the input tensor's dtype.
+        torch.dtype: The real dtype corresponding to the input tensor's dtype.
     """
     if input_tensor.is_complex():
         # If the input tensor is complex, return the corresponding real dtype
@@ -22,6 +28,14 @@ def get_real_dtype(input_tensor):
 
 
 def zeropad2fitdims(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
+    """Zero-pads a list of tensors to match the maximum dimensions found among them.
+    
+    Args:
+        tensors (list[torch.Tensor]): List of tensors to pad.
+        
+    Returns:
+        list[torch.Tensor]: List of padded tensors with identical shapes.
+    """
     # Get the maximum size along each dimension
     max_sizes = [
         max(tensor.size(dim) for tensor in tensors) for dim in range(tensors[0].dim())
@@ -42,11 +56,29 @@ def zeropad2fitdims(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
 
 
 def check_all_elements_equal(tensor: torch.Tensor) -> bool:
+    """Checks if all elements in a given tensor are identical.
+    
+    Args:
+        tensor (torch.Tensor): Tensor to check.
+        
+    Returns:
+        bool: True if all elements are equal, False otherwise.
+    """
     unique_elements = torch.unique(tensor)
     return len(unique_elements) == 1
 
 
-def nanappend(tensor: torch.Tensor, dim: int, final_length) -> torch.Tensor:
+def nanappend(tensor: torch.Tensor, dim: int, final_length: int) -> torch.Tensor:
+    """Appends NaNs to a tensor along a specific dimension up to a target length.
+    
+    Args:
+        tensor (torch.Tensor): Tensor to extend.
+        dim (int): Dimension to append NaNs along.
+        final_length (int): Final length desired for the specified dimension.
+        
+    Returns:
+        torch.Tensor: Padded tensor with NaNs at the end.
+    """
     size = list(tensor.shape)
     size[dim] = int(final_length - size[dim])
     return torch.cat(
@@ -58,7 +90,7 @@ def nanappend(tensor: torch.Tensor, dim: int, final_length) -> torch.Tensor:
     )
 
 
-def check_broadcastable(*shape_list: torch.Size) -> Union[tuple, bool]:
+def check_broadcastable(*shape_list: torch.Size) -> tuple | bool:
     """
     Check if a list of shapes are broadcastable and return the broadcasted shape.
 
@@ -100,17 +132,17 @@ def check_broadcastable(*shape_list: torch.Size) -> Union[tuple, bool]:
     return tuple(result_shape)
 
 
-def inv_perm_indices(perm_indices: Union[list, tuple]) -> list:
+def inv_perm_indices(perm_indices: list | tuple) -> list:
     """
     Computes the inverse permutation indices such that
     tensor.permute(perm_indices).permute(inv_perm_indices(perm_indices))
     restores the original tensor.
 
-    Parameters:
-    - perm_indices (list or tuple): List of permutation indices.
+    Args:
+        perm_indices (list | tuple): List of permutation indices.
 
     Returns:
-    - inv_perm (list): Inverse permutation indices.
+        list: Inverse permutation indices.
     """
     inv_perm = [0] * len(
         perm_indices
@@ -199,3 +231,52 @@ def match_dims_to(tensor, target_tensor):
         tensor = tensor.view((1,) * dims_to_add + tensor.shape)
 
     return tensor
+
+
+def dcn(t: torch.Tensor) -> np.ndarray:
+    return t.detach().cpu().numpy()
+
+
+def to_one_hot(input_tensor: torch.Tensor, num_classes: int) -> torch.Tensor:
+    """
+    Converts a tensor of integer class labels to a one-hot encoded tensor.
+
+    This function validates that all class labels in the input tensor are within
+    the valid range [0, num_classes - 1] before performing the conversion.
+
+    Args:
+        input_tensor (torch.Tensor): A tensor of integer class labels.
+            Shape: (..., T), where ... represents any number of leading dimensions.
+        num_classes (int): The total number of classes for one-hot encoding.
+            This will be the size of the last dimension in the output tensor.
+
+    Returns:
+        torch.Tensor: The one-hot encoded tensor.
+            Shape: (..., T, num_classes), with a float data type.
+
+    Raises:
+        ValueError: If `input_tensor` contains values less than 0 or
+            greater than or equal to `num_classes`.
+    """
+    # --- Validation Step ---
+    # Ensure the input tensor does not contain invalid class indices.
+    # Class indices must be in the range [0, num_classes - 1].
+    min_val = torch.min(input_tensor)
+    max_val = torch.max(input_tensor)
+
+    if min_val < 0 or max_val >= num_classes:
+        raise ValueError(
+            f"Input tensor contains invalid class indices. "
+            f"Values must be in the range [0, {num_classes - 1}], but found "
+            f"min value: {min_val} and max value: {max_val}."
+        )
+
+    # --- Conversion Step ---
+    # Convert the input tensor to Long type, as required by one_hot.
+    long_tensor = input_tensor.long()
+
+    # Perform the one-hot encoding.
+    one_hot_tensor = F.one_hot(long_tensor, num_classes=num_classes)
+
+    # Convert to float, which is standard for model outputs and loss calculations.
+    return one_hot_tensor.float()

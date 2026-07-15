@@ -1,7 +1,10 @@
-import torch
 from typing import Any
-from .bop import BOP
+
+import torch
+
 from muse_toolbox.utils import noise_whitening_4_BOP
+
+from .bop import BOP
 
 
 class BOP_W(BOP):

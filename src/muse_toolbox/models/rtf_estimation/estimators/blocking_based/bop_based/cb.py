@@ -1,5 +1,7 @@
-import torch
 from typing import Any
+
+import torch
+
 from .bop import BOP
 
 

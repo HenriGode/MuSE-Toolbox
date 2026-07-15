@@ -1,12 +1,16 @@
-from unicodedata import name
 import torch
 import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional, List
-from muse_toolbox.utils import activity_dict2tensor, STFTtransform, computeSNR, move2device
+from muse_toolbox.metrics.base_metric import BaseMetric
+from muse_toolbox.utils import STFTtransform, computeSNR, move2device
+from muse_toolbox.data.simulation.scenario_generation import activity_dict2tensor
 
 
 class SINR(BaseMetric):
+    """Signal-to-Interference-plus-Noise Ratio (SINR) metric class.
+    
+    Inherits from `BaseMetric` to evaluate multiple target-based objective metrics 
+    including SINR, SIR, SNR, and HGSDR across different scenarios.
+    """
     is_differentiable = False
     higher_is_better = True  # Higher SINR is better
     full_state_update = False
@@ -14,9 +18,17 @@ class SINR(BaseMetric):
 
     total_angle: torch.Tensor
     total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]
+    per_sample_results: list[torch.Tensor]
 
-    def __init__(self, transform: STFTtransform, ref_channels, *args, **kwargs):
+    def __init__(self, transform: STFTtransform, ref_channels: list[int], *args, **kwargs):
+        """Initializes the SINR metric.
+
+        Args:
+            transform (STFTtransform): Transformer for time-frequency conversion.
+            ref_channels (list[int]): List of reference channels.
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
 
         self.transform = transform
@@ -42,7 +54,7 @@ class SINR(BaseMetric):
         self.add_state("per_sample_results", default=[], dist_reduce_fx="cat")
         self.add_state("scenario_ids", default=[], dist_reduce_fx="cat")
 
-        self.scenario_ids: List[str] = []
+        self.scenario_ids: list[str] = []
 
     def update(
         self,
@@ -57,7 +69,17 @@ class SINR(BaseMetric):
         targets: tuple[dict, torch.Tensor],
         meta: dict,
         dataloader_idx: int,
-    ):
+    ) -> None:
+        """Updates the metric state with new batch data.
+
+        Calculates per-segment SINR, SIR, SNR, and related metrics for each beamformer.
+
+        Args:
+            preds: List containing prediction dictionaries and beamformer outputs.
+            targets (tuple[dict, torch.Tensor]): Tuple with ground truth targets.
+            meta (dict): Dictionary with scenario metadata (sad_samples, id_map, references).
+            dataloader_idx (int): Current dataloader index.
+        """
         for bidx in range(len(preds)):
             pred = preds[bidx]
             # gt_ids = meta["gt_ids_stream"][bidx]
@@ -246,6 +268,16 @@ class SINR(BaseMetric):
         output_sigs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         tad: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
+        """Calculates a wide array of SNR-based metrics for input and output.
+
+        Args:
+            input_sigs (tuple): Tuple of (target, interferer, noise) input tensors.
+            output_sigs (tuple): Tuple of (target, interferer, noise) output tensors.
+            tad (torch.Tensor): Target Activity Detection mask.
+
+        Returns:
+            dict[str, torch.Tensor]: Evaluated metrics including SINR, SIR, SNR, HGSDR.
+        """
         input_target, input_interferer, input_noise = input_sigs
         output_target, output_interferer, output_noise = output_sigs
         result = {}
@@ -409,6 +441,11 @@ class SINR(BaseMetric):
         return gt_target, gt_interferer  # (M, T)
 
     def compute(self) -> dict:
+        """Aggregates and returns the final metric values across all segments.
+
+        Returns:
+            dict: Computed values for all evaluation metrics and segment configurations.
+        """
         results = {}
         for name in self.Allnames:
             for met in self.Metnames:
@@ -421,7 +458,12 @@ class SINR(BaseMetric):
                     results[metname] = float("nan")
         return results
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Constructs a DataFrame summarizing all evaluation scenario outcomes.
+
+        Returns:
+            pd.DataFrame | None: Dataframe containing scenario results, or None if empty.
+        """
         if not self.scenario_ids:
             return None
 

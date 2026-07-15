@@ -1,29 +1,89 @@
 from .acoustic_simulation import (
-    calculate_t60, circularPositions, convolve_clean2microphone, convolve_white2microphone,
-    rir2rtf, save_rirNoise2wav, simDiffuseNoise, simDiffuseNoiseANF, simRIR_shoebox, simRIR_shoebox_PRA
+    calculate_t60,
+    circularPositions,
+    convolve_clean2microphone,
+    convolve_white2microphone,
+    rir2rtf,
+    save_rirNoise2wav,
+    simDiffuseNoise,
+    simDiffuseNoiseANF,
+    simRIR_shoebox,
+    simRIR_shoebox_PRA,
 )
-from .beamforming import apply_filter_and_sum, Beamformer
-from .plotting import (
-    plot_phaseogram, plot_spatial_coherence, plot_spectrogram, plot_stft_signal
+from .beamforming import Beamformer, calc_beam_pattern
+from .plotting import plot_coherence, plot_phaseogram, plot_spectrogram
+from .power import compute_power, compute_rms, computeSNR, normalize_components
+from .signal_stats import (
+    coherenceMatrix,
+    gmsc,
+    smoothCovarianceMatrix,
+    smoothCovarianceMatrix_conv,
+    wdo,
+    windowedCovarianceMatrix,
 )
-from .power import getPower, getPower_dB, getPowerMat, snr2power
-from .stats import (
-    coherenceMatrix, gmsc, smoothCovarianceMatrix, smoothCovarianceMatrix_conv,
-    wdo, windowedCovarianceMatrix
+from .transforms import (
+    Frequency_Weighting,
+    STFTtransform,
+    slice2frames,
+    torchaudio_functional_fftconvolve_complex,
 )
-from .transforms import Frequency_Weighting, STFTtransform, slice2frames
-from .vad_spp import GerkmannSPP, vad_g_from_SNR, vad_oracle, vad_oracle_batch, vad_opt_fast_gen
-from .whitening import noise_whitening_robust, noise_whitening, noise_subtraction
+from .vad_spp import (
+    gerkmannSPP_STFT,
+    plot_vad_debug,
+    vad_opt_fast_gen,
+    vad_opt_original,
+    vad_opt_slow,
+)
+from .whitening import (
+    covarianceSubtraction,
+    covarianceWhitening,
+    noise_subtraction,
+    noise_whitening,
+    noise_whitening_4_BOP,
+    noise_whitening_noncholesky,
+    noise_whitening_robust,
+)
 
 __all__ = [
-    "calculate_t60", "circularPositions", "convolve_clean2microphone", "convolve_white2microphone",
-    "rir2rtf", "save_rirNoise2wav", "simDiffuseNoise", "simDiffuseNoiseANF", "simRIR_shoebox", "simRIR_shoebox_PRA",
-    "apply_filter_and_sum", "Beamformer",
-    "plot_phaseogram", "plot_spatial_coherence", "plot_spectrogram", "plot_stft_signal",
-    "getPower", "getPower_dB", "getPowerMat", "snr2power",
-    "coherenceMatrix", "gmsc", "smoothCovarianceMatrix", "smoothCovarianceMatrix_conv",
-    "wdo", "windowedCovarianceMatrix",
-    "Frequency_Weighting", "STFTtransform", "slice2frames",
-    "GerkmannSPP", "vad_g_from_SNR", "vad_oracle", "vad_oracle_batch", "vad_opt_fast_gen",
-    "noise_whitening_robust", "noise_whitening", "noise_subtraction"
+    "Beamformer",
+    "Frequency_Weighting",
+    "STFTtransform",
+    "calc_beam_pattern",
+    "calculate_t60",
+    "circularPositions",
+    "coherenceMatrix",
+    "computeSNR",
+    "compute_power",
+    "compute_rms",
+    "convolve_clean2microphone",
+    "convolve_white2microphone",
+    "covarianceSubtraction",
+    "covarianceWhitening",
+    "gerkmannSPP_STFT",
+    "gmsc",
+    "noise_subtraction",
+    "noise_whitening",
+    "noise_whitening_4_BOP",
+    "noise_whitening_noncholesky",
+    "noise_whitening_robust",
+    "normalize_components",
+    "plot_coherence",
+    "plot_phaseogram",
+    "plot_spectrogram",
+    "plot_vad_debug",
+    "rir2rtf",
+    "save_rirNoise2wav",
+    "simDiffuseNoise",
+    "simDiffuseNoiseANF",
+    "simRIR_shoebox",
+    "simRIR_shoebox_PRA",
+    "slice2frames",
+    "smoothCovarianceMatrix",
+    "smoothCovarianceMatrix_conv",
+    "torchaudio_functional_fftconvolve_complex",
+    "vad_opt_fast_gen",
+    "vad_opt_original",
+    "vad_opt_slow",
+    "wdo",
+    "windowedCovarianceMatrix",
 ]

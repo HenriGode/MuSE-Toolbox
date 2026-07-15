@@ -1,318 +1,233 @@
 import torch
-import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional, List
-from muse_toolbox.utils import activity_dict2tensor, STFTtransform, fwssnr
+from muse_toolbox.metrics.rtf_estimation.ref_metric import RefMetric
+from muse_toolbox.utils import STFTtransform
 
 
-class FWSSNR(BaseMetric):
-    is_differentiable = False
-    higher_is_better = True  # Higher PESQ is better
-    full_state_update = False
-    requires_reference = True
+def fwssnr(
+    ref: torch.Tensor, sig: torch.Tensor, fs: float, frameLen=0.03, overlap=0.75
+) -> torch.Tensor:
 
-    total_angle: torch.Tensor
-    total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]
-    scenario_ids: List[str]
+    winlength = round(frameLen * fs)
+    skiprate = int(
+        torch.floor(torch.tensor((1 - overlap) * frameLen * fs))
+    )  # window skip in samples
+    max_freq = fs / 2  # maximum bandwidth
+    num_crit = 25  # number of critical bands
+    n_fft = int(2 ** torch.ceil(torch.log2(torch.tensor(2 * winlength))))
+    n_fftby2 = int(n_fft / 2)
+    gamma = 0.2
 
+    cent_freq = torch.zeros((num_crit,), device=ref.device, dtype=ref.dtype)
+    bandwidth = torch.zeros((num_crit,), device=ref.device, dtype=ref.dtype)
+
+    cent_freq[0] = 50.0000
+    bandwidth[0] = 70.0000
+    cent_freq[1] = 120.000
+    bandwidth[1] = 70.0000
+    cent_freq[2] = 190.000
+    bandwidth[2] = 70.0000
+    cent_freq[3] = 260.000
+    bandwidth[3] = 70.0000
+    cent_freq[4] = 330.000
+    bandwidth[4] = 70.0000
+    cent_freq[5] = 400.000
+    bandwidth[5] = 70.0000
+    cent_freq[6] = 470.000
+    bandwidth[6] = 70.0000
+    cent_freq[7] = 540.000
+    bandwidth[7] = 77.3724
+    cent_freq[8] = 617.372
+    bandwidth[8] = 86.0056
+    cent_freq[9] = 703.378
+    bandwidth[9] = 95.3398
+    cent_freq[10] = 798.717
+    bandwidth[10] = 105.411
+    cent_freq[11] = 904.128
+    bandwidth[11] = 116.256
+    cent_freq[12] = 1020.38
+    bandwidth[12] = 127.914
+    cent_freq[13] = 1148.30
+    bandwidth[13] = 140.423
+    cent_freq[14] = 1288.72
+    bandwidth[14] = 153.823
+    cent_freq[15] = 1442.54
+    bandwidth[15] = 168.154
+    cent_freq[16] = 1610.70
+    bandwidth[16] = 183.457
+    cent_freq[17] = 1794.16
+    bandwidth[17] = 199.776
+    cent_freq[18] = 1993.93
+    bandwidth[18] = 217.153
+    cent_freq[19] = 2211.08
+    bandwidth[19] = 235.631
+    cent_freq[20] = 2446.71
+    bandwidth[20] = 255.255
+    cent_freq[21] = 2701.97
+    bandwidth[21] = 276.072
+    cent_freq[22] = 2978.04
+    bandwidth[22] = 298.126
+    cent_freq[23] = 3276.17
+    bandwidth[23] = 321.465
+    cent_freq[24] = 3597.63
+    bandwidth[24] = 346.136
+
+    
+
+    bw_min = bandwidth[0]
+    min_factor = torch.exp(
+        torch.tensor(-30.0 / (2.0 * 2.303))
+    )  #      % -30 dB point of filter
+
+    all_f0 = torch.zeros((num_crit,), device=ref.device, dtype=ref.dtype)
+    crit_filter = torch.zeros(
+        (num_crit, int(n_fftby2)), device=ref.device, dtype=ref.dtype
+    )
+    j = torch.arange(0, n_fftby2, device=ref.device, dtype=ref.dtype)
+
+    for i in range(num_crit):
+        f0 = (cent_freq[i] / max_freq) * (n_fftby2)
+        all_f0[i] = torch.floor(f0)
+        bw = (bandwidth[i] / max_freq) * (n_fftby2)
+        norm_factor = torch.log(bw_min) - torch.log(bandwidth[i])
+        crit_filter[i, :] = torch.exp(
+            -11 * (((j - torch.floor(f0)) / bw) ** 2) + norm_factor
+        )
+        crit_filter[i, :] = crit_filter[i, :] * (crit_filter[i, :] > min_factor)
+
+    num_frames = ref.shape[-1] / skiprate - (winlength / skiprate)  # number of frames
+
+    hannWin = 0.5 * (
+        1
+        - torch.cos(
+            2
+            * torch.pi
+            * torch.arange(1, winlength + 1, device=ref.device, dtype=ref.dtype)
+            / (winlength + 1)
+        )
+    )
+    ref_reshaped = ref.reshape(-1, ref.shape[-1])
+    zeros = torch.zeros(
+        (ref_reshaped.shape[0], int((n_fft - winlength) / 2)), device=ref.device
+    )
+    ref_tmp = torch.cat(
+        [
+            zeros,
+            ref_reshaped[:, 0 : int(num_frames) * skiprate + int(winlength - skiprate)],
+            zeros,
+        ],
+        dim=-1,
+    )
+    Zxx = torch.stft(
+        ref_tmp,
+        n_fft=n_fft,
+        hop_length=skiprate,
+        win_length=hannWin.shape[-1],
+        window=hannWin,
+        center=False,
+        onesided=True,
+        return_complex=True,
+    )
+    ref_spec = torch.abs(Zxx).reshape(*ref.shape[:-1], *Zxx.shape[-2:])
+    ref_spec = ref_spec[..., :-1, :]
+    ref_spec = ref_spec / ref_spec.sum(dim=-2, keepdim=True)
+    sig_reshaped = sig.reshape(-1, sig.shape[-1])
+    zeros = torch.zeros(
+        (sig_reshaped.shape[0], int((n_fft - winlength) / 2)), device=ref.device
+    )
+    sig_tmp = torch.cat(
+        [
+            zeros,
+            sig_reshaped[:, 0 : int(num_frames) * skiprate + int(winlength - skiprate)],
+            zeros,
+        ],
+        dim=-1,
+    )
+    Zxx = torch.stft(
+        sig_tmp,
+        n_fft=n_fft,
+        hop_length=skiprate,
+        win_length=hannWin.shape[-1],
+        window=hannWin,
+        center=False,
+        onesided=True,
+        return_complex=True,
+    )
+    sig_spec = torch.abs(Zxx).reshape(*sig.shape[:-1], *Zxx.shape[-2:])
+    sig_spec = sig_spec[..., :-1, :]
+    sig_spec = sig_spec / sig_spec.sum(dim=-2, keepdim=True)
+
+    ref_energy = crit_filter @ ref_spec
+    sig_energy = crit_filter @ sig_spec
+    error_energy = torch.pow(ref_energy - sig_energy, 2)
+    error_energy[error_energy < torch.finfo(torch.float32).eps ** 2] = (
+        torch.finfo(torch.float32).eps ** 2
+    )
+    W_freq = torch.pow(ref_energy, gamma)
+    SNRlog = 10 * torch.log10((ref_energy**2) / error_energy)
+    fwSNR = torch.sum(W_freq * SNRlog, dim=-2, keepdim=True) / torch.sum(
+        W_freq, dim=-2, keepdim=True
+    )
+    distortion = fwSNR.clone()
+    distortion[distortion < -10] = -10
+    distortion[distortion > 35] = 35
+
+    return torch.mean(distortion, dim=-1, keepdim=False)
+
+
+class FWSSNR(RefMetric):
+    """Frequency-Weighted Segmental SNR (FWSSNR) metric class.
+    
+    Inherits from `RefMetric` to evaluate the Frequency-Weighted Segmental SNR 
+    between degraded and reference audio signals.
+    """
     def __init__(
-        self, transform: STFTtransform, frameLen: float, overlap: float, *args, **kwargs
+        self,
+        transform: STFTtransform,
+        frameLen: float,
+        overlap: float,
+        ref_channels: list[int],
+        *args,
+        **kwargs
     ):
-        super().__init__(*args, requires_numpy=False, **kwargs)
+        """Initializes the FWSSNR metric.
 
-        self.transform = transform
-        fs = int(self.transform.sampling_frequency)
+        Args:
+            transform (STFTtransform): Transformer object for STFT handling.
+            frameLen (float): Frame length in seconds.
+            overlap (float): Overlap ratio between frames (e.g., 0.75).
+            ref_channels (list[int]): Reference channels to evaluate.
+            *args: Additional arguments passed to RefMetric.
+            **kwargs: Additional keyword arguments passed to RefMetric.
+        """
+        super().__init__(
+            metric_name="FWSSNR",
+            transform=transform,
+            ref_channels=ref_channels,
+            *args,
+            **kwargs
+        )
+
         self.frameLen = frameLen
         self.overlap = overlap
-        self.fs = fs
+        self.fs = int(self.transform.sampling_frequency)
 
-        self.FWSSNR_fun = self.fwssnr_fun
-        self.ref_channel = 0  # Assuming the first channel is the reference TODO: make this configurable
+    def evaluate_metric(self, deg: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+        """Evaluates the FWSSNR for a given degraded and reference signal pair.
 
-        self.one_sample_results = {}
-        self.Segnames = ["A1", "A2", "A3", "D1", "D2"]
-        self.Allnames = [""] + [f"_{name}" for name in self.Segnames]
-        self.Metnames = ["FWSSNR"]
-        for name in self.Allnames:
-            for agg in self.Metnames:
-                self.add_state(
-                    f"{agg}{name}", default=torch.tensor(0.0), dist_reduce_fx="sum"
-                )
-                self.add_state(
-                    f"{agg}{name}_samples",
-                    default=torch.tensor(0),
-                    dist_reduce_fx="sum",
-                )
-                self.one_sample_results[f"{agg}{name}"] = torch.tensor(0.0)
-                self.one_sample_results[f"{agg}{name}_samples"] = torch.tensor(0)
+        Args:
+            deg (torch.Tensor): The degraded (predicted) signal tensor.
+            ref (torch.Tensor): The reference (ground truth) signal tensor.
 
-        self.add_state("per_sample_results", default=[], dist_reduce_fx="cat")
-        self.add_state("scenario_ids", default=[], dist_reduce_fx="cat")
-
-        self.scenario_ids: List[str] = []
-
-    def fwssnr_fun(self, deg: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        return fwssnr(
-            ref=ref.squeeze(0),
-            sig=deg.squeeze(0),
-            fs=self.fs,
-            frameLen=self.frameLen,
-            overlap=self.overlap,
-        )
-
-    def update(
-        self,
-        preds: list[
-            tuple[torch.Tensor, list[torch.Tensor], list[torch.Tensor], torch.Tensor]
-        ],
-        targets: tuple[dict, torch.Tensor],
-        meta: dict,
-        dataloader_idx: int,
-    ):
-        for bidx in range(len(preds)):
-            pred = preds[bidx]
-            # gt_ids = meta["gt_ids_stream"][bidx]
-            sad_samples = meta["sad_samples"][bidx]
-            id_map = meta["id_map"][bidx]
-            refs = meta["references"][bidx]
-
-            _, sad_samples_tensor, target_id_stream, seg_borders = activity_dict2tensor(
-                sad_samples, id_map
-            )  # (N,) whereby N is the number of samples in the stream
-
-            input_target, _ = self._construct_gt_target(
-                refs, target_id_stream, id_map
-            )  # (M, N)
-            input_target = input_target[
-                self.ref_channel : self.ref_channel + 1, :
-            ]  # (1, N)
-
-            input_noisy = torch.stack([v for v in refs.values()]).sum(dim=0)[
-                self.ref_channel : self.ref_channel + 1, :
-            ]  # (1, N)
-
-            Nsig = input_target.shape[-1]
-
-            pred_target = self.transform.decode(
-                pred[0], num_samples=Nsig
-            ).cpu()  # (F, 1, T)
-
-            sig_results = {}
-            sig_results["all"] = self._computeFWSSNRmetric(
-                input_target, input_noisy, pred_target
+        Returns:
+            torch.Tensor: Evaluated FWSSNR score.
+        """
+        try:
+            return fwssnr(
+                ref=ref.squeeze(0),
+                sig=deg.squeeze(0),
+                fs=self.fs,
+                frameLen=self.frameLen,
+                overlap=self.overlap,
             )
-
-            Kseg_old = 0
-            seg_ids = []
-
-            for name in self.Segnames:
-                sig_results[name] = []
-
-            for start, end in zip(seg_borders[:-1], seg_borders[1:]):
-                Nseg = end - start
-                # if Nseg < 7500:
-                #     raise ValueError("Segment too short for PESQ computation.")
-
-                Kseg = sad_samples_tensor[:-1, start:end].any(dim=-1).sum(dim=0)
-                if Kseg > Kseg_old:
-                    segid = f"A{Kseg}"
-                elif Kseg < Kseg_old:
-                    segid = f"D{Kseg}"
-                else:
-                    segid = f"S{Kseg}"
-                seg_ids.append(segid)
-                Kseg_old = Kseg
-
-                if Nseg < 1 or target_id_stream[start] == -3:
-                    continue
-
-                if segid in self.Segnames:
-
-                    # try:
-                    sig_results[segid].append(
-                        self._computeFWSSNRmetric(
-                            input_target[:, start:end],
-                            input_noisy[:, start:end],
-                            pred_target[:, start:end],
-                        )
-                    )
-                    # except:
-                    #     # print scenario id for debugging
-                    #     print(
-                    #         f"Scenario ID: {meta['scenario_id'][bidx]}, Segment ID: {segid}, Start: {start}, End: {end}"
-                    #     )
-                    #     # also write this print statement to a log file
-                    #     with open("./results/pesq_error_log.txt", "a") as f:
-                    #         f.write(
-                    #             f"Scenario ID: {meta['scenario_id'][bidx]}, Segment ID: {segid}, Start: {start}, End: {end}\n"
-                    #         )
-
-            # Update states to store delta values of SINR, SIR, and SNR (Delta is equal to ouput - input)
-            per_seg_tensors = []
-            for name in self.Allnames:
-                if name == "":
-                    res = sig_results["all"]
-                elif sig_results[name.removeprefix("_")] == []:
-                    # append nan if no segments of this type were present
-                    per_seg_tensors.append(
-                        torch.tensor(float("nan")).unsqueeze(0).expand(3)
-                    )
-                    continue
-                else:
-                    res = sig_results[name.removeprefix("_")]
-
-                metname = f"FWSSNR{name}"
-
-                out = (
-                    torch.stack([r[f"FWSSNRo"] for r in res])
-                    if isinstance(res, list)
-                    else res[f"FWSSNRo"]
-                )
-                inp = (
-                    torch.stack([r[f"FWSSNRi"] for r in res])
-                    if isinstance(res, list)
-                    else res[f"FWSSNRi"]
-                )
-
-                delta = out - inp
-                if delta.ndim == 0:
-                    getattr(self, metname).add_(delta)
-                    getattr(self, f"{metname}_samples").add_(
-                        torch.tensor(1)
-                    )  # Count one sample per update call
-                    per_seg_tensors.append(torch.stack([inp, out, delta]))  # (3,)
-                elif delta.ndim == 1:
-                    getattr(self, metname).add_(delta.sum())
-                    getattr(self, f"{metname}_samples").add_(
-                        torch.tensor(delta.numel())
-                    )  # Count one sample per segment
-                    per_seg_tensors.append(
-                        torch.stack(
-                            [
-                                inp.mean(),
-                                out.mean(),
-                                delta.mean(),
-                            ]
-                        )
-                    )  # (3,)
-                else:
-                    raise ValueError("Delta FWSSNR has more than 1 dimension.")
-
-            per_sample_tensor = torch.stack(per_seg_tensors)  # (6, 3)
-            self.per_sample_results.append(per_sample_tensor)
-
-            self.scenario_ids.append(meta["scenario_id"][bidx])
-
-    def _computeFWSSNRmetric(
-        self,
-        input_target: torch.Tensor,
-        input_noisy: torch.Tensor,
-        output_target: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
-        """
-        Compute the FWSSNR metric for the reference signals.
-
-        Args:
-            input_target (torch.Tensor): Ground truth target signal. Shape: (1, N)
-            input_noisy (torch.Tensor): Noisy input signal. Shape: (1, N)
-            output_target (torch.Tensor): Predicted target signal. Shape: (1, N)
-        Returns:
-            dict[str, torch.Tensor]: Dictionary containing FWSSNR metrics.
-        """
-        sig_results = {}
-
-        fwssnr_input = self.FWSSNR_fun(
-            deg=input_noisy,
-            ref=input_target,
-        )  # scalar
-        fwssnr_output = self.FWSSNR_fun(
-            deg=output_target,
-            ref=input_target,
-        )  # scalar
-
-        sig_results["FWSSNRi"] = fwssnr_input
-        sig_results["FWSSNRo"] = fwssnr_output
-
-        return sig_results
-
-    def _construct_gt_target(
-        self,
-        refs: dict[str, torch.Tensor],
-        target_id_stream: torch.Tensor,
-        id_map: dict[int, str],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Construct the ground truth target signal based on the reference signals and the target ID stream.
-
-        Args:
-            refs (dict[str, torch.Tensor]): Dictionary of reference signals.
-            target_id_stream (torch.Tensor): Tensor of target IDs.
-            id_map (dict[int, str]): Mapping from integer IDs to string labels.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]: Ground truth target signal, interference signal.
-        """
-        gt_target = []
-        gt_interferer = []
-        # loop over segments containing multiple frames which all have the same target ID
-        unique_ids, counts = torch.unique_consecutive(
-            target_id_stream, return_counts=True
-        )
-        t_start = 0
-        for uid, count in zip(unique_ids, counts):
-            t_end = t_start + count.item()
-
-            if uid.item() != -3:
-                target_id = id_map[uid.item()]
-                ref_signal = refs[target_id][:, t_start:t_end]  # (M, count)
-                # interferer signal is sum of all other active sources except target and exept noise (key: "noise")
-                interferer_signals = torch.zeros_like(ref_signal)
-                for key, ref in refs.items():
-                    if key != target_id and key != "noise":
-                        interferer_signals += ref[:, t_start:t_end]
-            else:
-                ref_signal = torch.zeros(
-                    (refs[next(iter(refs))].shape[0], count.item()),
-                    device=refs[next(iter(refs))].device,
-                )
-                interferer_signals = torch.zeros_like(ref_signal)
-            gt_target.append(ref_signal)
-            gt_interferer.append(interferer_signals)
-            t_start = t_end
-        gt_target = torch.cat(gt_target, dim=1)  # (M, T)
-        gt_interferer = torch.cat(gt_interferer, dim=1)  # (M, T)
-        return gt_target, gt_interferer  # (M, T)
-
-    def compute(self) -> dict:
-        results = {}
-        for name in self.Allnames:
-            metname = f"FWSSNR{name}"
-            total = getattr(self, metname)
-            samples = getattr(self, f"{metname}_samples")
-            if samples > 0:
-                results[metname] = (total / samples).item()
-            else:
-                results[metname] = float("nan")
-        return results
-
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
-        if not self.scenario_ids:
-            return None
-
-        results_dict = {}
-        for n, name in enumerate(self.Allnames):
-            for m, met in enumerate(
-                [
-                    "FWSSNRi",
-                    "FWSSNRo",
-                    "DFWSSNR",
-                ]
-            ):
-                results_dict[f"{met}{name}"] = [
-                    x[n, m].item() for x in self.per_sample_results
-                ]
-
-        df = pd.DataFrame(results_dict, index=self.scenario_ids)
-        df.index.name = "scenario_id"
-        return df
+        except Exception:
+            return torch.tensor([float("nan")], device=ref.device)

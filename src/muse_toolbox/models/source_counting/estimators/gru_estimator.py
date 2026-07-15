@@ -1,9 +1,11 @@
+import logging
+from typing import Any
+
 import torch
 import torch.nn as nn
-from typing import Union, Any
-import logging
 
 from muse_toolbox.utils import STFTtransform
+
 from .base_estimator import BaseSourceCountEstimator
 
 log = logging.getLogger(__name__)
@@ -22,7 +24,7 @@ class GRU_estimator(BaseSourceCountEstimator):
         input_dim: int,
         transform: STFTtransform,
         max_sources: int,
-        hidden_size: Union[int, float],
+        hidden_size: int | float,
         num_layers: int = 1,
         dropout: float = 0.0,
         bias: bool = True,

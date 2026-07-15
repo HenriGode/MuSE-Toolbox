@@ -1,16 +1,15 @@
 import logging
-from typing import Optional, Tuple
 
 import torch
 
 from muse_toolbox.utils.math.conversions import pow2db
-from muse_toolbox.utils.math.stochastics import wmean
+from muse_toolbox.utils.math.stats import wmean
 
 log = logging.getLogger(__name__)
 
 
 def compute_power(
-    signal_components: torch.Tensor, vad: Optional[torch.Tensor] = None
+    signal_components: torch.Tensor, vad: torch.Tensor | None = None
 ) -> torch.Tensor:
     """
     Computes the power of a multichannel signal, optionally weighted by a Voice Activity Detector (VAD).
@@ -42,7 +41,7 @@ def compute_power(
 
 
 def compute_rms(
-    signal_components: torch.Tensor, vad: Optional[torch.Tensor] = None
+    signal_components: torch.Tensor, vad: torch.Tensor | None = None
 ) -> torch.Tensor:
     """
     Computes the Root Mean Square (RMS) of a signal, optionally weighted by a VAD.
@@ -60,9 +59,9 @@ def compute_rms(
 
 def normalize_components(
     signal_components: torch.Tensor,
-    vad: Optional[torch.Tensor] = None,
+    vad: torch.Tensor | None = None,
     norm_power: float = 1e-2,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Normalizes the signal components to a target power level.
 
@@ -80,7 +79,7 @@ def normalize_components(
 
 
 def computeSNR(
-    signal: torch.Tensor, noise: torch.Tensor, vad: Optional[torch.Tensor] = None
+    signal: torch.Tensor, noise: torch.Tensor, vad: torch.Tensor | None = None
 ) -> torch.Tensor:
     """
     Computes the Signal-to-Noise Ratio (SNR) in decibels.

@@ -1,22 +1,22 @@
-import torch
-from muse_toolbox.models.base_model import BaseLitModel
-from typing import Optional, Any
 import logging
 
+import torch
+from torchaudio.transforms import SoudenMVDR
+
+from muse_toolbox.models.base_model import BaseLitModel
+from muse_toolbox.data.components import HeterogeneousBatch
 from muse_toolbox.utils import (
     STFTtransform,
-    HeterogeneousBatch,
-    wmean,
-    norm_by_sum,
-    peigvech,
-    trace,
-    regularize,
-    zero2identity,
     activity_dict2tensor,
     get_real_dtype,
     makeHermitian,
+    norm_by_sum,
+    peigvech,
+    regularize,
+    trace,
+    wmean,
+    zero2identity,
 )
-from torchaudio.transforms import SoudenMVDR
 
 log = logging.getLogger(__name__)
 
@@ -40,11 +40,11 @@ class BlockOnlineGSS(BaseLitModel):
         latency_constraint: bool = True,
         batch_size: int = 1,
         loss_config: dict = {"CrossEntropy": None},
-        optimizer_config: Optional[dict] = None,
-        lr_scheduler_config: Optional[dict] = None,
-        metrics_train: Optional[dict] = None,
-        metrics_val: Optional[dict] = None,
-        metrics_test: Optional[dict] = None,
+        optimizer_config: dict | None = None,
+        lr_scheduler_config: dict | None = None,
+        metrics_train: dict | None = None,
+        metrics_val: dict | None = None,
+        metrics_test: dict | None = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):
@@ -300,7 +300,7 @@ class OnlineGSS_Block_Processor:
         Kmax: int,
         L: int,
         C: int,
-        eta: Optional[float] = None,
+        eta: float | None = None,
         ref_channels: list[int] = [0],
         latency_constraint: bool = True,
     ):

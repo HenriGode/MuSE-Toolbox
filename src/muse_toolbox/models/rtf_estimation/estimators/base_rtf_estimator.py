@@ -1,7 +1,8 @@
-import torch
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
-import logging
+
+import torch
 
 log = logging.getLogger(__name__)
 

@@ -1,13 +1,15 @@
+import logging
+from collections import defaultdict
+from typing import Any
+
 import torch
 import torch.nn as nn
 import torchaudio
-import logging
-from typing import Any
-from collections import defaultdict
+
+from muse_toolbox.models.components.nn_blocks.causal_conv1d import CausalConv1d
+from muse_toolbox.utils import STFTtransform
 
 from .base_feature import BaseFeatureExtractor
-from muse_toolbox.utils import STFTtransform
-from muse_toolbox.models.components.nn_blocks.causal_conv1d import CausalConv1d
 
 log = logging.getLogger(__name__)
 

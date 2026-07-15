@@ -1,11 +1,14 @@
-import torch
-import torch.nn as nn
 import hashlib
 import logging
-from typing import cast, Iterable, Any
+from collections.abc import Iterable
+from typing import Any, cast
+
+import torch
+import torch.nn as nn
+
+from muse_toolbox.utils import STFTtransform
 
 from .base_feature import BaseFeatureExtractor
-from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)
 

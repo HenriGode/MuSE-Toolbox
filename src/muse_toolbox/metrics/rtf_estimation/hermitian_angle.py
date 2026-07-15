@@ -1,17 +1,22 @@
 import torch
 import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional
+from muse_toolbox.metrics.base_metric import BaseMetric
 from muse_toolbox.utils import (
     hermitian_angle,
-    activity_dict2tensor,
     STFTtransform,
     wmean,
     get_real_dtype,
 )
+from muse_toolbox.data.simulation.scenario_generation import activity_dict2tensor
 
 
 class HermitianAngle(BaseMetric):
+    """Hermitian Angle evaluation metric class.
+    
+    Inherits from `BaseMetric` and evaluates the directional accuracy 
+    of the estimated Relative Transfer Functions (RTFs) using both raw 
+    and energy-weighted Mean Hermitian Angle metrics across segments.
+    """
     is_differentiable = False
     higher_is_better = False  # Assuming smaller angle is better
     full_state_update = False
@@ -49,6 +54,13 @@ class HermitianAngle(BaseMetric):
     scenario_ids: list[str]
 
     def __init__(self, transform: STFTtransform, *args, **kwargs):
+        """Initializes the HermitianAngle metric.
+
+        Args:
+            transform (STFTtransform): Transformer to encode signals to time-frequency domain.
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
         self.transform = transform
         self.ref_weights = {}
@@ -80,7 +92,15 @@ class HermitianAngle(BaseMetric):
         targets: tuple[dict, torch.Tensor],
         meta: dict,
         dataloader_idx: int,
-    ):
+    ) -> None:
+        """Updates the metric state with new batch data.
+
+        Args:
+            preds: List containing tuples of predicted spatial covariance matrices, RTFs, and IDs.
+            targets (tuple[dict, torch.Tensor]): Tuple with ground truth references.
+            meta (dict): Dictionary with scenario metadata like sad_frames, id_map.
+            dataloader_idx (int): Current dataloader index.
+        """
         for bidx in range(len(preds)):
             pred = preds[bidx]
             gt_rtfs = meta["gt_rtf_stream"][bidx]
@@ -380,6 +400,11 @@ class HermitianAngle(BaseMetric):
     #     # return ha_all, ha_last
 
     def compute(self) -> dict:
+        """Aggregates and returns the final metric values across all segments.
+
+        Returns:
+            dict: Computed values for Mean and Weighted Mean Hermitian Angles.
+        """
         results = {}
         for name in self.HAnames:
             for agg in self.AGGnames:
@@ -393,7 +418,12 @@ class HermitianAngle(BaseMetric):
 
         return results
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Constructs a DataFrame summarizing all evaluation scenario outcomes.
+
+        Returns:
+            pd.DataFrame | None: Dataframe containing scenario results, or None if empty.
+        """
         if not self.scenario_ids:
             return None
 

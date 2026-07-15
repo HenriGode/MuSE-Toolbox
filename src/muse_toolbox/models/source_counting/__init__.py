@@ -5,10 +5,10 @@ This package contains models and routines for estimating
 the number of active speakers.
 """
 
-from .cosad import CoSAD
+from .cosad import COSADmodule
 from .precomputed_sad import PrecomputedSAD
 
 __all__ = [
-    "CoSAD",
+    "COSADmodule",
     "PrecomputedSAD",
 ]

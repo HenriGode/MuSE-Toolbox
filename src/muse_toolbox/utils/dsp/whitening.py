@@ -1,5 +1,4 @@
 import logging
-from typing import Optional, Tuple
 
 import torch
 
@@ -46,9 +45,9 @@ def noise_subtraction(
 def noise_whitening(
     whiteningCovMat: torch.Tensor,
     covMat: torch.Tensor,
-    RTFvecs: Optional[torch.Tensor] = None,
+    RTFvecs: torch.Tensor | None = None,
     subtract_identity: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
     Whitens the covariance matrix using Cholesky decomposition.
 
@@ -93,9 +92,9 @@ def noise_whitening(
 def noise_whitening_robust(
     whiteningCovMat: torch.Tensor,
     covMat: torch.Tensor,
-    RTFvecs: Optional[torch.Tensor] = None,
+    RTFvecs: torch.Tensor | None = None,
     subtract_identity: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
     Whitens the covariance matrix, falling back to matrix square root if Cholesky decomposition fails.
 
@@ -166,7 +165,7 @@ def noise_whitening_4_BOP(
     whiteningCovMat: torch.Tensor,
     covMat: torch.Tensor,
     RTFvecs: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Robust noise whitening intended for Block Orthogonal Projection (BOP) scenarios.
 
@@ -226,9 +225,9 @@ def noise_whitening_4_BOP(
 def noise_whitening_noncholesky(
     whiteningCovMat: torch.Tensor,
     covMat: torch.Tensor,
-    RTFvecs: Optional[torch.Tensor] = None,
+    RTFvecs: torch.Tensor | None = None,
     subtract_identity: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
     Whitens the covariance matrix using matrix square root instead of Cholesky decomposition.
 

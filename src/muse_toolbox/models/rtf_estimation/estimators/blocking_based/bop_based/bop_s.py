@@ -1,7 +1,10 @@
-import torch
 from typing import Any
-from .bop import BOP
+
+import torch
+
 from muse_toolbox.utils import noise_subtraction
+
+from .bop import BOP
 
 
 class BOP_S(BOP):

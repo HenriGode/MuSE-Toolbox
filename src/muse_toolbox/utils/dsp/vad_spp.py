@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import torch
 import torchaudio
+from matplotlib import pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -118,30 +119,6 @@ def vad_opt_fast_gen(
         closed = closed[..., : vad.shape[-1]]
 
     return closed > 0.5
-
-
-def vad_opt_bidirectional(
-    audio: torch.Tensor, fs: float = 16000.0, thr: float = -30, min_on: float = 50e-3
-) -> torch.Tensor:
-    """
-    Bidirectional VAD approach combining forward and reversed audio directions.
-    
-    .. deprecated::
-       It potentially detects activity in the center of silent gaps. Use vad_opt_fast_gen instead.
-    """
-    log.warning("vad_opt_bidirectional is deprecated.")
-    raise DeprecationWarning(
-        "vad_opt_bidirectional is deprecated.\n"
-        "It potentially detects activity in the center of silent gaps.\n"
-        "Use vad_opt instead."
-    )
-
-    vad_mask = vad_opt_original(audio, fs, thr, min_on)
-    vad_mask_rev = vad_opt_original(torch.flip(audio, dims=[-1]), fs, thr, min_on)
-    vad_mask_rev = torch.flip(vad_mask_rev, dims=[-1])
-    # combine both masks with and operation
-    vad_combined = vad_mask & vad_mask_rev
-    return vad_combined
 
 
 def vad_opt_original(
@@ -291,3 +268,91 @@ def gerkmannSPP_STFT(stft_sig: torch.Tensor, inti_frames: int = 8) -> torch.Tens
 
     return spp
 
+
+def plot_vad_debug(audio_signal: torch.Tensor, vad_mask: torch.Tensor, save_path: str):
+    """
+    Plots audio channels and the VAD mask to verify alignment.
+
+    Args:
+        audio_signal: [M, N] tensor (M channels, N samples)
+        vad_mask: [N] tensor (N samples), binary (0 or 1) or boolean
+        save_path: File path to save the plot (include extension like .png)
+    """
+    # 1. Data Preparation
+    # Ensure CPU and Numpy
+    if audio_signal.ndim == 1:
+        audio_signal = audio_signal.unsqueeze(0)
+
+    M, N = audio_signal.shape
+    audio_np = audio_signal.detach().cpu().numpy()
+    mask_np = vad_mask.detach().cpu().float().numpy()
+
+    # Normalize audio to [-1, 1] for visualization scaling
+    max_val = np.abs(audio_np).max()
+    if max_val > 0:
+        audio_np = audio_np / max_val
+
+    time_axis = np.arange(N)
+
+    # 2. Plotting
+    plt.figure(figsize=(12, 6))
+
+    # Plot Audio Channels
+    # If many channels, plot first one bold, others faint
+    if M > 1:
+        for m in range(1, M):
+            plt.plot(time_axis, audio_np[m], color="gray", alpha=0.3, linewidth=0.5)
+        plt.plot(
+            time_axis,
+            audio_np[0],
+            color="black",
+            alpha=0.8,
+            linewidth=1.0,
+            label="Ch 0 Audio",
+        )
+    else:
+        plt.plot(
+            time_axis,
+            audio_np[0],
+            color="black",
+            alpha=0.8,
+            linewidth=1.0,
+            label="Audio",
+        )
+
+    # Plot Mask Overlay (Green Shading)
+    # where=mask_np>0.5 handles both boolean and float masks
+    plt.fill_between(
+        time_axis,
+        -1,
+        1,
+        where=(mask_np > 0.5),  # type: ignore
+        color="green",
+        alpha=0.2,
+        label="VAD Active (Region)",
+    )
+
+    # Plot Mask Line (Red Step)
+    plt.plot(
+        time_axis,
+        mask_np * 0.9,
+        color="red",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.7,
+        label="VAD Mask (Signal)",
+    )
+
+    # 3. Styling
+    plt.ylim(-1.1, 1.1)
+    plt.title(f"Audio Signal (Normalized) vs VAD Mask\nChannels: {M}, Samples: {N}")
+    plt.xlabel("Sample Index")
+    plt.ylabel("Normalized Amplitude")
+    plt.legend(loc="upper right")
+    plt.grid(True, alpha=0.3)
+
+    # 4. Save
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()  # Free memory
+    print(f"VAD Plot saved to: {save_path}")

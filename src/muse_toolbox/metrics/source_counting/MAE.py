@@ -1,10 +1,14 @@
 import torch
 import pandas as pd
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from typing import Optional, List
+from muse_toolbox.metrics.base_metric import BaseMetric
 
 
 class MAE(BaseMetric):
+    """Mean Absolute Error (MAE) metric class.
+    
+    Inherits from `BaseMetric` to evaluate the absolute differences 
+    between predicted and true source counts across batches and samples.
+    """
     is_differentiable = False
     higher_is_better = False
     full_state_update = True
@@ -12,9 +16,15 @@ class MAE(BaseMetric):
 
     total_absolute_error: torch.Tensor
     total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]  # State will be a list of Tensors
+    per_sample_results: list[torch.Tensor]  # State will be a list of Tensors
 
     def __init__(self, *args, **kwargs):
+        """Initializes the MAE metric.
+
+        Args:
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
 
         # Use primitives for default values to ensure correct device placement
@@ -26,7 +36,7 @@ class MAE(BaseMetric):
         self.add_state("per_sample_results", default=[], dist_reduce_fx="cat")
 
         # scenario_ids is not a metric state, just a regular attribute
-        self.scenario_ids: List[str] = []
+        self.scenario_ids: list[str] = []
 
     def update(
         self,
@@ -35,6 +45,14 @@ class MAE(BaseMetric):
         meta: dict,
         dataloader_idx: int,
     ):
+        """Updates the MAE metric states with new predictions and targets.
+
+        Args:
+            preds: List of prediction tensors.
+            targets: List of ground truth count tensors.
+            meta (dict): Dictionary with scenario metadata.
+            dataloader_idx (int): Current dataloader index.
+        """
         if self.requires_reference and targets is None:
             return
 
@@ -65,8 +83,12 @@ class MAE(BaseMetric):
         mae = self.total_absolute_error / self.total_samples
         return {"MAE": mae}
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
-        """Creates a DataFrame with per-sample MAE results."""
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Creates a DataFrame with per-sample MAE results.
+        
+        Returns:
+            pd.DataFrame | None: Dataframe containing scenario results.
+        """
         if not self.scenario_ids:
             return None
 

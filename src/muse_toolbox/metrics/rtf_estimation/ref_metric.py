@@ -1,11 +1,18 @@
 import torch
 import pandas as pd
-from typing import Optional, List
-from muse_toolbox.metrics.common.base_metric import BaseMetric
-from muse_toolbox.utils import activity_dict2tensor, STFTtransform
+from muse_toolbox.metrics.base_metric import BaseMetric
+from muse_toolbox.utils import STFTtransform
+from muse_toolbox.data.simulation.scenario_generation import activity_dict2tensor
 
 
 class RefMetric(BaseMetric):
+    """Reference Metric class for segment-based evaluation in MuSE-Toolbox.
+
+    Inherits from `BaseMetric` and provides common orchestration logic for 
+    metrics like SDR, STOI, PESQ, and SiSDR. Automatically handles segmenting 
+    the audio based on Voice Activity Detection (VAD) ground truth and grouping 
+    the results by the number of active speakers (e.g., A1, A2, A3).
+    """
     is_differentiable = False
     higher_is_better = True
     full_state_update = False
@@ -13,8 +20,8 @@ class RefMetric(BaseMetric):
 
     total_angle: torch.Tensor
     total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]
-    scenario_ids: List[str]
+    per_sample_results: list[torch.Tensor]
+    scenario_ids: list[str]
 
     def __init__(
         self,
@@ -24,6 +31,15 @@ class RefMetric(BaseMetric):
         *args,
         **kwargs,
     ):
+        """Initializes the RefMetric.
+
+        Args:
+            metric_name (str): The prefix for this metric in logs (e.g., 'SDR').
+            transform (STFTtransform): Transformer to convert STFT inputs back to time-domain if necessary.
+            ref_channels (list[int]): Indices of channels to use as reference signals.
+            *args: Variable length argument list passed to `BaseMetric`.
+            **kwargs: Arbitrary keyword arguments passed to `BaseMetric`.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
 
         self.transform = transform
@@ -51,12 +67,23 @@ class RefMetric(BaseMetric):
         self.add_state("per_sample_results", default=[], dist_reduce_fx="cat")
         self.add_state("scenario_ids", default=[], dist_reduce_fx="cat")
 
-        self.scenario_ids: List[str] = []
+        self.scenario_ids: list[str] = []
 
     def evaluate_metric(self, deg: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        """
-        Evaluate the metric. Must be implemented by the child class.
-        Usually with a try except block returning NaN on failure.
+        """Evaluates the core metric logic for a degraded signal against a reference.
+        
+        Must be implemented by the child class. Usually contains a try-except block 
+        returning NaN on failure to avoid crashing long evaluations on bad segments.
+
+        Args:
+            deg (torch.Tensor): The degraded or enhanced audio signal tensor.
+            ref (torch.Tensor): The ground truth reference audio signal tensor.
+
+        Returns:
+            torch.Tensor: The computed metric score.
+
+        Raises:
+            NotImplementedError: If not overridden by the subclass.
         """
         raise NotImplementedError
 
@@ -73,7 +100,15 @@ class RefMetric(BaseMetric):
         targets: tuple[dict, torch.Tensor],
         meta: dict,
         dataloader_idx: int,
-    ):
+    ) -> None:
+        """Updates the metric state with new batch data and calculates per-segment scores.
+
+        Args:
+            preds: Nested list containing the predicted model outputs and beamformer dicts.
+            targets: A tuple representing ground truth targets.
+            meta (dict): A dictionary containing 'sad_samples', 'id_map', and 'references'.
+            dataloader_idx (int): Index of the current dataloader.
+        """
         for bidx in range(len(preds)):
             pred = preds[bidx]
             sad_samples = meta["sad_samples"][bidx]
@@ -203,6 +238,16 @@ class RefMetric(BaseMetric):
         input_noisy: torch.Tensor,
         output_targets: dict[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
+        """Computes the metric for both the input (noisy) and output (enhanced) signals.
+
+        Args:
+            input_target (torch.Tensor): Ground truth target tensor.
+            input_noisy (torch.Tensor): The noisy/degraded input tensor.
+            output_targets (dict[str, torch.Tensor]): Dictionary of beamformer outputs.
+
+        Returns:
+            dict[str, torch.Tensor]: Dictionary containing the evaluated metric results.
+        """
         sig_results = {}
 
         metric_input = self.evaluate_metric(
@@ -226,6 +271,16 @@ class RefMetric(BaseMetric):
         target_id_stream: torch.Tensor,
         id_map: dict[int, str],
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Constructs the ground truth target and interferer signals from references.
+
+        Args:
+            refs (dict[str, torch.Tensor]): Dictionary of reference signals.
+            target_id_stream (torch.Tensor): Stream mapping time frames to speaker IDs.
+            id_map (dict[int, str]): Map from integer ID to speaker string key.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: Concatenated target and interferer signals.
+        """
         gt_target = []
         gt_interferer = []
         unique_ids, counts = torch.unique_consecutive(
@@ -256,6 +311,12 @@ class RefMetric(BaseMetric):
         return gt_target, gt_interferer
 
     def compute(self) -> dict:
+        """Aggregates all segment statistics and computes the final averaged metric scores.
+
+        Returns:
+            dict: A dictionary mapping the metric names and segment conditions (e.g., 'SDRA1') 
+            to their final computed floating point values.
+        """
         results = {}
         for name in self.Allnames:
             metname = f"{self.metric_name}{name}"
@@ -267,7 +328,12 @@ class RefMetric(BaseMetric):
                 results[metname] = float("nan")
         return results
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Constructs a DataFrame of all evaluated scenario results.
+
+        Returns:
+            pd.DataFrame | None: A dataframe with results or None if no scenarios were evaluated.
+        """
         if not self.scenario_ids:
             return None
 

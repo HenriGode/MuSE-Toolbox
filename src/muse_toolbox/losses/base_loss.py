@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
-from typing import Any, Union, List
+from typing import Any
 
 
 class BaseLoss(nn.Module, ABC):
@@ -20,8 +20,8 @@ class BaseLoss(nn.Module, ABC):
 
     def forward(
         self,
-        prediction: Union[torch.Tensor, List[torch.Tensor]],
-        target: Union[torch.Tensor, List[torch.Tensor]],
+        prediction: torch.Tensor | list[torch.Tensor],
+        target: torch.Tensor | list[torch.Tensor],
     ) -> torch.Tensor:
         """Computes the loss between predictions and targets.
 

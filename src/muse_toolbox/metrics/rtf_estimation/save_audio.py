@@ -1,14 +1,19 @@
 import torch
 import pandas as pd
-from .base_metric import BaseMetric
-from typing import Optional, List
+from muse_toolbox.metrics.base_metric import BaseMetric
 from muse_toolbox.utils import STFTtransform
 from torchcodec.encoders import AudioEncoder
 import os
-from muse_toolbox.utils import activity_dict2tensor
+from muse_toolbox.data.simulation.scenario_generation import activity_dict2tensor
 
 
 class SAVE_AUDIO(BaseMetric):
+    """Audio saving metric class.
+    
+    A pseudo-metric that inherits from `BaseMetric`. Rather than computing 
+    a numerical score, it saves the output beamformed signals, the noisy 
+    mixture, and the ground truth targets to disk as WAV files.
+    """
     is_differentiable = False
     higher_is_better = True  # Higher STOI is better
     full_state_update = False
@@ -16,18 +21,29 @@ class SAVE_AUDIO(BaseMetric):
 
     total_angle: torch.Tensor
     total_samples: torch.Tensor
-    per_sample_results: List[torch.Tensor]
+    per_sample_results: list[torch.Tensor]
 
     def __init__(
         self,
         transform: STFTtransform,
         model_name: str,
-        sad_model_name: Optional[str] = None,
-        block_size_frames: Optional[int] = None,
-        pre_context_frames: Optional[int] = None,
+        sad_model_name: str | None = None,
+        block_size_frames: int | None = None,
+        pre_context_frames: int | None = None,
         *args,
         **kwargs,
     ):
+        """Initializes the SAVE_AUDIO pseudo-metric.
+
+        Args:
+            transform (STFTtransform): Transformer to convert STFT back to time-domain.
+            model_name (str): Name of the beamforming model used.
+            sad_model_name (str | None): Name of the Voice Activity Detection model.
+            block_size_frames (int | None): Block size if using BlockOnlineGSS.
+            pre_context_frames (int | None): Pre-context frames if using BlockOnlineGSS.
+            *args: Variable length arguments passed to BaseMetric.
+            **kwargs: Arbitrary keyword arguments passed to BaseMetric.
+        """
         super().__init__(*args, requires_numpy=False, **kwargs)
 
         self.transform = transform
@@ -55,7 +71,15 @@ class SAVE_AUDIO(BaseMetric):
         targets: tuple[dict, torch.Tensor],
         meta: dict,
         dataloader_idx: int,
-    ):
+    ) -> None:
+        """Processes batch predictions and saves them as audio files.
+
+        Args:
+            preds: List containing prediction dictionaries and beamformer outputs.
+            targets (tuple[dict, torch.Tensor]): Tuple with ground truth references.
+            meta (dict): Dictionary with scenario metadata like sad_samples, id_map.
+            dataloader_idx (int): Current dataloader index.
+        """
         for bidx in range(len(preds)):
             pred = preds[bidx]
             # gt_ids = meta["gt_ids_stream"][bidx]
@@ -115,13 +139,31 @@ class SAVE_AUDIO(BaseMetric):
                     sample_rate=int(self.transform.sampling_frequency),
                 ).to_file(dest=f"{save_dir_groundtruth}/scenario_{scenario_id}.wav")
 
-    def compute(self) -> Optional[dict]:
+    def compute(self) -> dict | None:
+        """Returns a dummy result indicating that the saving process ran.
+
+        Returns:
+            dict | None: Dictionary with `saved` flag.
+        """
         return {"saved": torch.tensor(1)}
 
-    def get_dataframe(self) -> Optional[pd.DataFrame]:
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Returns None as SAVE_AUDIO produces no metric results dataframe.
+
+        Returns:
+            pd.DataFrame | None: Always returns None.
+        """
         return None
 
-    def _split_scenario_id(self, scenario_id: str):
+    def _split_scenario_id(self, scenario_id: str) -> tuple[str, str, str]:
+        """Splits the scenario identifier string into its constituent parts.
+
+        Args:
+            scenario_id (str): The combined scenario identifier string.
+
+        Returns:
+            tuple[str, str, str]: Tuple of dataset_id, split_name, and scenario_id.
+        """
         dataset_id_splitname, scenario_id = scenario_id.split("_generator_")
         # The dataset_id still contains the actial dataset_id and the split name
         # the split name is everything after the last underscore

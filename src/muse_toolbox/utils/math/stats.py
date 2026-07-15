@@ -1,7 +1,6 @@
 """Generate random numbers"""
 
 import logging
-from typing import Union, Tuple, Optional
 
 import torch
 
@@ -11,7 +10,7 @@ log = logging.getLogger(__name__)
 
 
 def randdir(
-    *size: int, device: Union[torch.device, str] = "cuda:0", dtype: torch.dtype = torch.complex128
+    *size: int, device: torch.device | str = "cuda:0", dtype: torch.dtype = torch.complex128
 ) -> torch.Tensor:
     """
     Generates a random direction vector (unit norm).
@@ -132,8 +131,8 @@ def gaussian(x: torch.Tensor, mu: float = 0.0, sigma: float = 1.0) -> torch.Tens
 
 def wmean(
     tensor: torch.Tensor,
-    dims: Union[int, Tuple[int, ...]],
-    weights: Optional[torch.Tensor] = None,
+    dims: int | tuple[int, ...],
+    weights: torch.Tensor | None = None,
     keepdim: bool = True,
 ) -> torch.Tensor:
     """
@@ -177,7 +176,7 @@ def norm_by_sum(tensor: torch.Tensor, dims: int, keepdim: bool = True) -> torch.
 def deviation(
     original: torch.Tensor,
     comparator: torch.Tensor,
-    dim: Union[int, Tuple[int, ...]] = (-1, -2),
+    dim: int | tuple[int, ...] = (-1, -2),
     relative: bool = True,
 ) -> torch.Tensor:
     """
@@ -199,7 +198,7 @@ def deviation(
     else:
         return torch.linalg.norm(comparator - original, dim=dim, keepdim=True)
 
-def statistics(data: torch.Tensor, dim: int = -1) -> Tuple[torch.Tensor, torch.Tensor]:
+def statistics(data: torch.Tensor, dim: int = -1) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the mean and covariance matrix of a tensor.
 

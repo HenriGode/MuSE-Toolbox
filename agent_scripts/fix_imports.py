@@ -11,13 +11,13 @@ modules = [
     'muse_toolbox.utils.math.covariance',
     'muse_toolbox.utils.math.geometry',
     'muse_toolbox.utils.math.matrix_ops',
-    'muse_toolbox.utils.math.stochastics',
+    'muse_toolbox.utils.math.stats',
     'muse_toolbox.utils.math.windowing',
     'muse_toolbox.utils.dsp.acoustic_simulation',
     'muse_toolbox.utils.dsp.beamforming',
     'muse_toolbox.utils.dsp.plotting',
     'muse_toolbox.utils.dsp.power',
-    'muse_toolbox.utils.dsp.stats',
+    'muse_toolbox.utils.dsp.signal_stats',
     'muse_toolbox.utils.dsp.transforms',
     'muse_toolbox.utils.dsp.vad_spp',
     'muse_toolbox.utils.dsp.whitening',
@@ -78,8 +78,8 @@ for filename in ['muse_toolbox/utils/data_utils.py', 'muse_toolbox/utils/util_cl
     
     # regex to remove old math and dsp wildcard imports
     new_source = source
-    import_block = "from .math.conversions import *\nfrom .math.complex_angles import *\nfrom .math.covariance import *\nfrom .math.geometry import *\nfrom .math.matrix_ops import *\nfrom .math.stochastics import *\nfrom .math.windowing import *\n"
-    import_block += "from .dsp.acoustic_simulation import *\nfrom .dsp.beamforming import *\nfrom .dsp.plotting import *\nfrom .dsp.power import *\nfrom .dsp.stats import *\nfrom .dsp.transforms import *\nfrom .dsp.vad_spp import *\nfrom .dsp.whitening import *\n"
+    import_block = "from .math.conversions import *\nfrom .math.complex_angles import *\nfrom .math.covariance import *\nfrom .math.geometry import *\nfrom .math.matrix_ops import *\nfrom .math.stats import *\nfrom .math.windowing import *\n"
+    import_block += "from .dsp.acoustic_simulation import *\nfrom .dsp.beamforming import *\nfrom .dsp.plotting import *\nfrom .dsp.power import *\nfrom .dsp.signal_stats import *\nfrom .dsp.transforms import *\nfrom .dsp.vad_spp import *\nfrom .dsp.whitening import *\n"
     
     # we will just replace matching lines
     lines = new_source.split('\n')

@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 """Source counting pipeline for MuSE-Toolbox.
 
 This module handles the training, testing, and prediction phases for
@@ -7,20 +8,22 @@ source counting models, dynamically instantiated via Hydra.
 import gc
 import logging
 import os
-from pathlib import Path
+from typing import Sized, cast
 
-import torch
 import hydra
-import lightning as pl
+import torch
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
 # Required for HeterogeneousBatch handling when saving predictions
-from muse_toolbox.utils import HeterogeneousBatch
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 
 log = logging.getLogger(__name__)
 
 
-def run_source_counting_pipeline(cfg: DictConfig) -> str:
+def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
     """Executes the source counting pipeline based on the configuration.
     
     This general pipeline dynamically instantiates any compatible DataModule (e.g. Brudex, PraAnf)
@@ -31,38 +34,46 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str:
         cfg (DictConfig): The hierarchical Hydra configuration object.
         
     Returns:
-        str: The path to the directory where predictions were saved (if applicable).
+        str | None: The path to the directory where predictions were saved (if applicable).
     """
     log.info("Starting source counting pipeline...")
     
     # 1. Instantiate DataModule
     log.info("Instantiating DataModule...")
-    datamodule = hydra.utils.instantiate(cfg.dataset)
+    dataset_cfg = cast(DictConfig, cfg.get("dataset"))
+    datamodule: LightningDataModule = cast(LightningDataModule, hydra.utils.instantiate(dataset_cfg))
     
     # 2. Instantiate Model
     log.info("Instantiating Model...")
-    model = hydra.utils.instantiate(cfg.model)
+    model_cfg = cast(DictConfig, cfg.get("model"))
+    model: LightningModule = cast(LightningModule, hydra.utils.instantiate(model_cfg))
     
     # 3. Setup Logger
-    logger = None
+    logger: Logger | None = None
     if "logger" in cfg:
-        logger = hydra.utils.instantiate(cfg.logger)
-        if hasattr(logger, "log_hyperparams"):
+        logger_cfg = cast(DictConfig, cfg.get("logger"))
+        logger = cast(Logger | None, hydra.utils.instantiate(logger_cfg))
+        if logger is not None and hasattr(logger, "log_hyperparams"):
             # safely log the config dictionary
             try:
                 from omegaconf import OmegaConf
-                logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
+                
+                params = OmegaConf.to_container(cfg, resolve=True)
+                if isinstance(params, dict):
+                    logger.log_hyperparams(cast(dict[str, object], params))
             except Exception:
                 pass
             
     # 4. Setup Callbacks
-    callbacks = []
+    callbacks: list[Callback] = []
     if "callbacks" in cfg:
-        for _, cb_conf in cfg.callbacks.items():
-            callbacks.append(hydra.utils.instantiate(cb_conf))
+        callbacks_cfg = cast(DictConfig, cfg.get("callbacks"))
+        for _, cb_conf in cast(dict[str, DictConfig], cast(object, callbacks_cfg)).items():
+            callbacks.append(cast(Callback, hydra.utils.instantiate(cb_conf)))
             
     # 5. Setup Trainer
-    trainer = hydra.utils.instantiate(cfg.trainer, logger=logger, callbacks=callbacks)
+    trainer_cfg = cast(DictConfig, cfg.get("trainer"))
+    trainer: Trainer = cast(Trainer, hydra.utils.instantiate(trainer_cfg, logger=logger, callbacks=callbacks))
     
     # 6. Train and Test
     if cfg.get("train", True):
@@ -71,24 +82,29 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str:
         
     if cfg.get("test", True):
         log.info("Starting testing...")
-        trainer.test(model, datamodule=datamodule)
+        _ = trainer.test(model, datamodule=datamodule)
         
     # 7. Predict and Save (Optional)
-    predictions_dir = cfg.get("predictions_dir", None)
+    predictions_dir = cast(str | None, cfg.get("predictions_dir", None))
     
     if cfg.get("predict", False) and predictions_dir is not None:
         log.info(f"Running prediction and saving results to {predictions_dir}...")
         os.makedirs(predictions_dir, exist_ok=True)
         
         # Determine checkpoint path (use best if available)
-        ckpt_path = "best" if cfg.get("train", True) else None
+        ckpt_path = cast(str | None, "best" if cfg.get("train", True) else None)
         
         # We can predict on the test_dataloader
-        if not hasattr(datamodule, "test_ds") or datamodule.test_ds is None:
+        test_ds = getattr(datamodule, "test_ds", None)
+        if test_ds is None:
             datamodule.setup("test")
+            test_ds = getattr(datamodule, "test_ds", None)
+            
+        if test_ds is None:
+            raise ValueError("DataModule did not create a 'test_ds' attribute during setup('test').")
             
         # Split test dataset into two halves to avoid OOM (Restored from old J1_RUN)
-        len_test_ds = len(datamodule.test_ds)
+        len_test_ds = len(cast(Sized, test_ds))
         split_idx = len_test_ds // 2
         indices_parts = [
             list(range(0, split_idx)),
@@ -100,13 +116,13 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str:
                 continue
 
             log.info(f"Predicting part {i+1}/2 ({len(indices)} samples)...")
-            subset_ds = torch.utils.data.Subset(datamodule.test_ds, indices)
+            subset_ds = torch.utils.data.Subset(cast("torch.utils.data.Dataset[object]", test_ds), indices)
             subset_dl = torch.utils.data.DataLoader(
                 subset_ds,
-                batch_size=datamodule.batch_size,
-                num_workers=datamodule.num_workers,
+                batch_size=getattr(datamodule, "batch_size", 1),
+                num_workers=getattr(datamodule, "num_workers", 0),
                 shuffle=False,
-                collate_fn=datamodule.test_ds.collate_fn,
+                collate_fn=getattr(cast(object, test_ds), "collate_fn", None),
             )
             
             predictions = trainer.predict(model, dataloaders=subset_dl, ckpt_path=ckpt_path)
@@ -119,7 +135,7 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str:
                         if not isinstance(est_activity, list):
                             raise ValueError("Expected batch.estimates to be a list of tensors.")
                             
-                        scenario_ids = batch.meta["scenario_id"]
+                        scenario_ids = cast(list[str], batch.meta["scenario_id"])
                         
                         for idx, sid in enumerate(scenario_ids):
                             save_path = os.path.join(predictions_dir, f"{sid}.pt")
@@ -129,7 +145,7 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str:
             
             # Cleanup memory after each chunk
             del predictions
-            gc.collect()
+            _ = gc.collect()
             torch.cuda.empty_cache()
                     
         log.info(f"Predictions successfully saved to {predictions_dir}.")

@@ -1,15 +1,19 @@
+import logging
+from typing import Any
+
 import torch
-from muse_toolbox.models.rtf_estimation.estimators.base_rtf_estimator import BaseRTFestimator
+
+from muse_toolbox.models.rtf_estimation.estimators.base_rtf_estimator import (
+    BaseRTFestimator,
+)
 from muse_toolbox.utils import (
+    characteristic_subspace,
+    check_broadcastable,
+    makeMatrixUnitNorm,
     makeVectorUnitNorm,
     orthogonal_projection,
     randdir,
-    characteristic_subspace,
-    makeMatrixUnitNorm,
-    check_broadcastable,
 )
-from typing import Optional, Any
-import logging
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +106,7 @@ class BOP(BaseRTFestimator):
         Rn: torch.Tensor,
         Ry: torch.Tensor,
         G: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """
         Performs noise handling for the BOP estimator.
         Since BOP does not natively handle noise, it returns the noisy covariance unaltered.

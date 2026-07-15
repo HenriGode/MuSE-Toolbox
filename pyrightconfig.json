@@ -1,0 +1,11 @@
+{
+    "venvPath": "/home/henrig/.conda/envs",
+    "venv": "j3",
+    "typeCheckingMode": "basic",
+    "reportExplicitAny": "none",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnknownParameterType": "none",
+    "reportAny": "none"
+}

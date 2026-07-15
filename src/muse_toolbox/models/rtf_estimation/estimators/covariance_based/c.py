@@ -1,8 +1,11 @@
-import torch
 import logging
 from typing import Any
 
-from muse_toolbox.models.rtf_estimation.estimators.base_rtf_estimator import BaseRTFestimator
+import torch
+
+from muse_toolbox.models.rtf_estimation.estimators.base_rtf_estimator import (
+    BaseRTFestimator,
+)
 from muse_toolbox.utils import peigvech
 
 log = logging.getLogger(__name__)

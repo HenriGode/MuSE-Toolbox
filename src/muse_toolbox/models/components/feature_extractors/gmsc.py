@@ -1,15 +1,17 @@
-from typing import Any
 import logging
+from typing import Any
+
 import torch
 
 log = logging.getLogger(__name__)
 from muse_toolbox.utils import (
     STFTtransform,
-    smoothCovarianceMatrix,
+    get_real_dtype,
     gmsc,
     regularize,
-    get_real_dtype,
+    smoothCovarianceMatrix,
 )
+
 from .base_feature import BaseFeatureExtractor
 
 

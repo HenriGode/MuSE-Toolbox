@@ -1,10 +1,11 @@
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Any
-import logging
 
 import torch
 import torch.nn as nn
+
 from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)

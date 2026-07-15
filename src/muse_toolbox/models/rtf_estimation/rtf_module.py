@@ -1,24 +1,24 @@
-import torch
 import math
-import matplotlib
-from muse_toolbox.models.rtf_estimation.estimators import BaseRTFestimator, Oracle
-from muse_toolbox.models.base_model import BaseLitModel
-from typing import Optional
-from muse_toolbox.utils import (
-    HeterogeneousBatch,
-    STFTtransform,
-    weighted_SCM,
-    smoothCovarianceMatrix,
-    hermitian_angle,
-    Beamformer,
-    growing_average_SCM,
-    Segment,
-    identify_segments,
-    covariance_SCM,
-    exp_windowing_recursive_changing_factor,
-    db2amp,
-)
 from dataclasses import dataclass
+
+import matplotlib
+import torch
+
+from muse_toolbox.models.base_model import BaseLitModel
+from muse_toolbox.models.rtf_estimation.estimators import BaseRTFestimator, Oracle
+from muse_toolbox.data.components import HeterogeneousBatch
+from muse_toolbox.data.simulation.scenario_generation import Segment, identify_segments
+from muse_toolbox.utils import (
+    Beamformer,
+    STFTtransform,
+    covariance_SCM,
+    db2amp,
+    exp_windowing_recursive_changing_factor,
+    growing_average_SCM,
+    hermitian_angle,
+    smoothCovarianceMatrix,
+    weighted_SCM,
+)
 
 matplotlib.use("agg")
 
@@ -52,15 +52,15 @@ class RTFmodule(BaseLitModel):
         interferer_gain: float,  # [dB]
         bf_type: str,
         refchannels: list[int],
-        max_sources: Optional[int] = None,
-        source_activity_method: Optional[torch.nn.Module] = None,  # None = "oracle"
+        max_sources: int | None = None,
+        source_activity_method: torch.nn.Module | None = None,  # None = "oracle"
         batch_size: int = 1,
         loss_config: dict = {"CrossEntropy": None},
-        optimizer_config: Optional[dict] = None,
-        lr_scheduler_config: Optional[dict] = None,
-        metrics_train: Optional[dict] = None,
-        metrics_val: Optional[dict] = None,
-        metrics_test: Optional[dict] = None,
+        optimizer_config: dict | None = None,
+        lr_scheduler_config: dict | None = None,
+        metrics_train: dict | None = None,
+        metrics_val: dict | None = None,
+        metrics_test: dict | None = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
     ):
@@ -149,13 +149,11 @@ class RTFmodule(BaseLitModel):
             ):
                 source_count.append(
                     self.transform.samples2frames_quantity(
-                        (
                             batch.meta["scenario_params"][i][
                                 "transform"
                             ].frames2samples_quantity(
                                 batch.meta["source_count"][i].float()
                             )
-                        )
                     ).int()
                 )
             else:
@@ -281,7 +279,7 @@ class SourceRegistry:
     # Stores global source identities
     # registry_rtfs: [F, M, N_reg]
 
-    def __init__(self, Kmax: Optional[int], F: int, M: int, device: torch.device, dtype: torch.dtype):
+    def __init__(self, Kmax: int | None, F: int, M: int, device: torch.device, dtype: torch.dtype):
         """
         Initializes the SourceRegistry.
 
@@ -435,7 +433,7 @@ class RTFScenarioProcessor:
             x.shape[-1] + 1, device=x.device
         ).sqrt()[1:],
         registry_HA_threshold: float = 0.25,
-        max_sources: Optional[int] = None,
+        max_sources: int | None = None,
         interferer_gain: float = 0.0,  # [dB]
         ref_channels: list[int] = [0],
     ):

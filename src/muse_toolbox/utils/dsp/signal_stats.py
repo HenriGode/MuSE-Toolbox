@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import torch
 
@@ -25,8 +24,8 @@ log = logging.getLogger(__name__)
 def smoothCovarianceMatrix(
     stft_signal: torch.Tensor,
     smoothing_factor: float,
-    init_cov: Optional[torch.Tensor] = None,
-    init_smoothing_factor: Optional[float] = None,
+    init_cov: torch.Tensor | None = None,
+    init_smoothing_factor: float | None = None,
 ) -> torch.Tensor:
     """
     Compute the smoothed covariance matrix using recursive exponential windowing.
@@ -87,7 +86,7 @@ def windowedCovarianceMatrix(
     """
     log.debug("Computing windowed covariance matrix.")
     instantaneous_cov_mat = covariance_SCM(stft_signal.transpose(-2, -1)[..., None])
-    num_channels = instantaneous_cov_mat.shape[-2]
+    # num_channels = instantaneous_cov_mat.shape[-2]
     # instantaneous_cov_mat[..., :num_channels, :, :] = regularize(
     #     instantaneous_cov_mat[..., :num_channels, :, :], reg_factor=1e-1
     # )

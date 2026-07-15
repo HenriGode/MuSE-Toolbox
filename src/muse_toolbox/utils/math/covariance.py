@@ -1,8 +1,9 @@
 import logging
+
 import torch
 
-from .matrix_ops import makeHermitian, trace, evd2matrix_h, mytorch_eigh
-from .stochastics import wmean, deviation
+from .matrix_ops import evd2matrix_h, makeHermitian, mytorch_eigh, trace
+from .stats import deviation, wmean
 
 log = logging.getLogger(__name__)
 

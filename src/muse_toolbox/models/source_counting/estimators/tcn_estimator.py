@@ -1,10 +1,12 @@
-import torch
 import logging
 from typing import Any
 
-from .base_estimator import BaseSourceCountEstimator
+import torch
+
 from muse_toolbox.models.components.nn_blocks.conv_tasnet import TCN
 from muse_toolbox.utils import STFTtransform
+
+from .base_estimator import BaseSourceCountEstimator
 
 log = logging.getLogger(__name__)
 

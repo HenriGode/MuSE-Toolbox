@@ -1,9 +1,9 @@
+import logging
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union, Tuple, Optional, Any
-import logging
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class cLN(nn.Module):
             eps (float, optional): Small value to avoid division by zero. Defaults to 1e-8.
             trainable (bool, optional): Whether gain and bias are trainable. Defaults to True.
         """
-        super(cLN, self).__init__()
+        super().__init__()
 
         self.eps = eps
         if trainable:
@@ -66,7 +66,7 @@ class cLN(nn.Module):
         return x * self.gain.expand_as(x) + self.bias.expand_as(x)
 
 
-def repackage_hidden(h: Union[torch.Tensor, tuple]) -> Union[torch.Tensor, tuple]:
+def repackage_hidden(h: torch.Tensor | tuple) -> torch.Tensor | tuple:
     """
     Wraps hidden states in new Tensors, to detach them from their history.
 
@@ -106,7 +106,7 @@ class MultiRNN(nn.Module):
         num_layers: int = 1,
         bidirectional: bool = False,
     ) -> None:
-        super(MultiRNN, self).__init__()
+        super().__init__()
 
         self.rnn = getattr(nn, rnn_type)(
             input_size,
@@ -124,7 +124,7 @@ class MultiRNN(nn.Module):
 
     def forward(
         self, input: torch.Tensor
-    ) -> Tuple[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, torch.Tensor | tuple[torch.Tensor, torch.Tensor]]:
         """
         Forward pass for the MultiRNN.
 
@@ -140,7 +140,7 @@ class MultiRNN(nn.Module):
 
     def init_hidden(
         self, batch_size: int
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """
         Initializes the hidden states for the RNN.
 
@@ -188,9 +188,9 @@ class FCLayer(nn.Module):
         input_size: int,
         hidden_size: int,
         bias: bool = True,
-        nonlinearity: Optional[str] = None,
+        nonlinearity: str | None = None,
     ) -> None:
-        super(FCLayer, self).__init__()
+        super().__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -255,7 +255,7 @@ class DepthConv1d(nn.Module):
             skip (bool, optional): Whether to use a skip connection. Defaults to True.
             causal (bool, optional): Whether to use causal convolution. Defaults to False.
         """
-        super(DepthConv1d, self).__init__()
+        super().__init__()
 
         self.causal = causal
         self.skip = skip
@@ -286,7 +286,7 @@ class DepthConv1d(nn.Module):
         if self.skip:
             self.skip_out = nn.Conv1d(hidden_channel, input_channel, 1)
 
-    def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(self, input: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for the depthwise convolution.
 
@@ -345,7 +345,7 @@ class TCN(nn.Module):
             causal (bool, optional): Whether to use causal convolution. Defaults to False.
             dilated (bool, optional): Whether to use dilated convolution. Defaults to True.
         """
-        super(TCN, self).__init__()
+        super().__init__()
 
         # input is a sequence of features of shape (B, N, L)
 
