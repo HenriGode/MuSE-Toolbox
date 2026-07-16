@@ -4,7 +4,8 @@ from typing import Any
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
-from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch, STFTtransform
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
+from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,16 @@ class COSADmodule(BaseLitModel):
             compute_complexity_metrics (bool): Whether to profile computational complexity.
             check_causality (bool): Whether to enforce causality checks on the model.
         """
+        import functools
+        if isinstance(feature_extractor, functools.partial):
+            feature_extractor = feature_extractor(transform=transform)
+            
+        if isinstance(source_count_estimator, functools.partial):
+            source_count_estimator = source_count_estimator(
+                input_dim=feature_extractor.feature_dim,
+                transform=transform
+            )
+            
         super().__init__(
             model_name=f"COSAD_{feature_extractor.__class__.__name__}_{source_count_estimator.__class__.__name__}",
             batch_size=batch_size,

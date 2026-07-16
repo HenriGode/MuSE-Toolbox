@@ -1,9 +1,10 @@
 _target_: muse_toolbox.data.BrudexDataModule
-id: "J1_BXLS_main_exp"
-batch_size: 30
+id: "J3_BXLS_test"
+data_dir: ${paths.data_dir}
+batch_size: 10
 num_workers: 0
-num_scenarios: [5280, 528, 2640]
-sampling_frequency: 16000
+num_scenarios: [40, 20, 10]
+sampling_frequency: 8000
 clean_speech_databases: ["Librispeech"]
 seed: 777
 acc_device: "cpu"
@@ -24,6 +25,7 @@ generation_config:
   bridge_clean_speech_gaps: 0.1
   vad_threshold2define_oracle: -60
   vad_threshold2select_clean_speech: -30
+  fix_seglen: False
 
 brudex_config:
   _target_: muse_toolbox.data.BrudexConfig

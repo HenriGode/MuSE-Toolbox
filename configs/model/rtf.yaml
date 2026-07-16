@@ -1,0 +1,44 @@
+_target_: muse_toolbox.models.rtf_estimation.rtf_module.RTFmodule
+
+transform: ${transform}
+batch_size: 20
+
+smoothing_time_constant: 0.5
+segment_forgetting_factor: 0.1
+fix_prev_rel_time: 0.666666
+noisy_cov_init_time: 0.5
+registry_HA_threshold: 0.7853981633974483
+interferer_gain: -20
+bf_type: "MVDR"
+refchannels: [0, 2]
+
+rtf_estimator:
+  _target_: muse_toolbox.models.rtf_estimation.estimators.BOP_W
+
+# Using None for loss and optimizer since RTFmodule might not require backprop in this formulation
+loss_config: null
+optimizer_config: null
+lr_scheduler_config: null
+
+metrics_train: {}
+metrics_val: {}
+metrics_test:
+  HermitianAngle: {}
+  SINR:
+    ref_channels: [0]
+  STOI:
+    extended: True
+    ref_channels: [0]
+  PESQ:
+    mode: "wb"
+    n_processes: 20
+    ref_channels: [0]
+  SDR:
+    use_cg_iter: null
+    filter_length: 512
+    zero_mean: False
+    load_diag: null
+    ref_channels: [0]
+  SISDR:
+    zero_mean: False
+    ref_channels: [0]

@@ -6,6 +6,7 @@
 defaults:
   - _self_
   - /defaults/audio@_here_  # Force Hydra to look at root (/defaults)
+  - task: null      # Allows python main.py task=...
   - experiment: null  # Allows python main.py experiment=...
 
 # 2. Global Settings

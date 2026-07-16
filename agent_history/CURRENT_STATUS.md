@@ -51,14 +51,32 @@ We strictly applied our **5-Point Standard Operating Procedure (SOP)** across th
 - **Utils Cleanup:** Applied the SOP to `debug_utils.py`, `profiling_utils.py`, `system.py`, `tensor_ops.py`, etc., aggressively replacing `print()` statements with standard `logging.getLogger(__name__)` calls. Deleted the unused `model_utils.py`.
 - **Codebase Assessment:** Generated a formal architecture review now stored in `agent_history/codebase_assessment.md`.
 
+### 8. Data Directory Architecture Refactoring
+- Decoupled the entire dataset generation and resolution logic from the package source code.
+- Removed fragile `__file__`-based global path constants like `PROJECT_ROOT` and `BRUDEX_PATH` from data modules.
+- Re-routed all pathing dynamically through Hydra injection via `${paths.data_dir}`.
+- Segregated data into `/data/databases/` (for raw downloaded corpora like LibriSpeech and BRUDEX) and `/data/datasets/` (for precomputed scenario tensors).
+
 ---
 
 ## 🚧 What Is Open (The Roadmap)
 
 If you are resuming development, here are the direct next steps needed to complete the project functionality:
 
-- [ ] **1. Formalize the PyTorch Lightning Modules**
-  - Extract the specific training step logic from the legacy codebase into `COSADmodule` and `RTFmodule`. Plug these completed LitModules into the new skeletal `pipelines/` scripts.
+- [x] **1. Formalize the PyTorch Lightning Modules**
+  - *Completed:* Extracted diagnostic logic from `BaseLitModel` into Callbacks (`nan_guard`, `complexity_profiler`, `save_results`, `causality_check`).
+  - *Completed:* Ported `COSADmodule` and `RTFmodule`.
+  - *Completed:* Generated the Hydra configuration glue (`configs/task/`, `configs/model/`) to properly inject dependencies into the `pipelines/` scripts.
+
+- [ ] **1b. Integration Testing & Debugging**
+  - **Status:** *In Progress (Paused).* We have successfully booted the pipeline, resolved Hydra interpolation bugs (`${dataset.batch_size}` vs `sad_batch_size`), and fixed Torchaudio download `FileNotFoundError` bugs.
+  - **Next Step:** Manually move the existing `brudex/` base data and any cached datasets into the new `data/databases/` and `data/datasets/` directories. Once moved, resume the end-to-end `main.py` test run to ensure training fully executes.
+
+- [ ] **1c. Output Directory Architecture Refactor**
+  - Ensure the `.hydra`, `wandb`, `results`, `predictions`, and `audio` all log correctly inside the new `outputs/<task>/<experiment>/<timestamp>/<split>/` directory structure. Refactor Callbacks and Hydra config logging rules to achieve this.
+
+- [ ] **1d. HeterogeneousBatch Architectural Refactor**
+  - Strip all DSP/Transform logic out of `HeterogeneousBatch` and move it directly into the PyTorch Lightning module `forward()` passes, ensuring it acts solely as a dumb data container. Detailed in `agent_history/HETEROGENEOUS_BATCH_REFACTOR.md`.
 
 - [ ] **2. Setup the AMI Dataset**
   - Introduce the full AMI corpus integration inside the `data/` directory. Build out the `Database`, `Dataset`, and `DataModule` wrappers.

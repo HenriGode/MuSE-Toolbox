@@ -2,10 +2,49 @@ import logging
 
 import torch
 
-from ..dsp.transforms import torchaudio_functional_fftconvolve_complex
 from ..tensor_ops import get_real_dtype
 
 log = logging.getLogger(__name__)
+
+
+def torchaudio_functional_fftconvolve_complex(
+    x: torch.Tensor, y: torch.Tensor, mode: str = "full"
+) -> torch.Tensor:
+    r"""
+    Convolves inputs along their last dimension using FFT. For inputs with large last dimensions, this function
+    is generally much faster than :meth:`convolve`.
+    Note that, in contrast to :meth:`torch.nn.functional.conv1d`, which actually applies the valid cross-correlation
+    operator, this function applies the true `convolution`_ operator.
+    Also note that this function can only output (c)float tensors (int tensor inputs will be cast to (c)float).
+
+    .. devices:: CPU CUDA
+
+    .. properties:: Autograd TorchScript
+
+    Args:
+        x (torch.Tensor): First convolution operand, with shape `(..., N)`.
+        y (torch.Tensor): Second convolution operand, with shape `(..., M)`
+            (leading dimensions must be broadcast-able with those of ``x``).
+        mode (str, optional): Must be one of ("full", "valid", "same").
+
+            * "full": Returns the full convolution result, with shape `(..., N + M - 1)`. (Default)
+            * "valid": Returns the segment of the full convolution result corresponding to where
+              the two inputs overlap completely, with shape `(..., max(N, M) - min(N, M) + 1)`.
+            * "same": Returns the center segment of the full convolution result, with shape `(..., N)`.
+
+    Returns:
+        torch.Tensor: Result of convolving ``x`` and ``y``, with shape `(..., L)`, where
+        the leading dimensions match those of ``x`` and `L` is dictated by ``mode``.
+
+    .. _convolution:
+        https://en.wikipedia.org/wiki/Convolution
+    """
+    log.debug(f"Computing fftconvolve_complex with mode='{mode}'.")
+    n = x.size(-1) + y.size(-1) - 1
+    if x.is_complex() or y.is_complex():
+        return torch.fft.ifft(torch.fft.fft(x, n=n) * torch.fft.fft(y, n=n), n=n)
+    else:
+        return torch.fft.irfft(torch.fft.rfft(x, n=n) * torch.fft.rfft(y, n=n), n=n)
 
 
 def windowing(data: torch.Tensor, window: torch.Tensor, dim: int = -1) -> torch.Tensor:

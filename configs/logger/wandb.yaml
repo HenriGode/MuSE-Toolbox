@@ -1,5 +1,6 @@
 _target_: lightning.pytorch.loggers.WandbLogger
-project: "J1_main"
-name: "J1_BXLS_main_exp"
+project: "J3_test"
+name: "J3_BXLS_test"
 group: "SAD"
-dir: "."
+dir: "${hydra:runtime.output_dir}/logging"
+save_dir: "${hydra:runtime.output_dir}/logging"

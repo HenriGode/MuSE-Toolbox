@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - override /model: rtf
+  - override /dataset: brudex_main
+
+task: rtf_estimation
+use_oracle_activations: True
+predictions_dir: null

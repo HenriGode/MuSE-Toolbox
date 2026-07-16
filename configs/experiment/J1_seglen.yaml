@@ -4,13 +4,13 @@ defaults:
 
 # Example: Changing the signal_lengths and batch size for this specific experiment
 dataset:
-  id: "J1_BXLS_seglen"
+  id: "J3_BXLS_test"
   generation_config:
-    signal_lengths: 30.0
+    signal_lengths: 60.0 # [s]
+    fix_seglen: False    
 
-trainer:
-  sad_batch_size: 60
+  batch_size: 10
 
 logger:
-  project: "J1_seglen"
-  name: "J1_BXLS_seglen_exp"
+  project: "J3_test"
+  name: "J3_BXLS_test_exp"

@@ -1,4 +1,4 @@
-sampling_rate: 16000
+sampling_rate: 8000
 stft:
-  n_fft: 512
-  hop_length: 128
+  frame_length: 0.064
+  frame_shift: 0.016

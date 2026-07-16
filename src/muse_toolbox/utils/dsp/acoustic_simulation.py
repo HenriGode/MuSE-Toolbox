@@ -7,10 +7,8 @@ import pyroomacoustics as pra
 import torch
 import torchaudio
 
-from muse_toolbox.utils.dsp.transforms import (
-    STFTtransform,
-    torchaudio_functional_fftconvolve_complex,
-)
+from muse_toolbox.utils.dsp.transforms import STFTtransform
+from muse_toolbox.utils.math.windowing import torchaudio_functional_fftconvolve_complex
 from muse_toolbox.utils.math.covariance import covariance_SCM
 from muse_toolbox.utils.math.matrix_ops import peigvech
 from muse_toolbox.utils.tensor_ops import inv_perm_indices, zeropad2fitdims

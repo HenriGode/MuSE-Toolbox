@@ -69,6 +69,7 @@ from .windowing import (
     exp_windowing_recursive_changing_factor,
     windowing,
     windowing_conv,
+    torchaudio_functional_fftconvolve_complex,
 )
 
 __all__ = [
@@ -87,5 +88,6 @@ __all__ = [
     "randdir", "randdir_orthogonal2vec", "sample_complex_multivariate", "gaussian", "wmean",
     "norm_by_sum", "deviation",
     "windowing", "windowing_conv", "exp_windowing", "exp_windowing_conv",
-    "exp_windowing_recursive", "exp_windowing_recursive_changing_factor"
+    "exp_windowing_recursive", "exp_windowing_recursive_changing_factor",
+    "torchaudio_functional_fftconvolve_complex"
 ]

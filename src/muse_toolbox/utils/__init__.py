@@ -19,7 +19,8 @@ from muse_toolbox.utils.math import (
     randdir, randdir_orthogonal2vec, sample_complex_multivariate, gaussian, wmean,
     norm_by_sum, deviation,
     windowing, windowing_conv, exp_windowing, exp_windowing_conv,
-    exp_windowing_recursive, exp_windowing_recursive_changing_factor
+    exp_windowing_recursive, exp_windowing_recursive_changing_factor,
+    torchaudio_functional_fftconvolve_complex
 )
 from muse_toolbox.utils.tensor_ops import (
     check_all_elements_equal,
@@ -41,7 +42,7 @@ from muse_toolbox.utils.system import (
 )
 from muse_toolbox.utils.dsp import (
     Beamformer, calc_beam_pattern,
-    Frequency_Weighting, STFTtransform, slice2frames, torchaudio_functional_fftconvolve_complex,
+    Frequency_Weighting, STFTtransform, slice2frames,
     calculate_t60, circularPositions, convolve_clean2microphone, convolve_white2microphone, rir2rtf, save_rirNoise2wav, simDiffuseNoise, simDiffuseNoiseANF, simRIR_shoebox, simRIR_shoebox_PRA,
     coherenceMatrix, gmsc, smoothCovarianceMatrix, smoothCovarianceMatrix_conv, wdo, windowedCovarianceMatrix,
     computeSNR, compute_power, compute_rms, normalize_components,

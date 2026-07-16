@@ -25,7 +25,6 @@ from .transforms import (
     Frequency_Weighting,
     STFTtransform,
     slice2frames,
-    torchaudio_functional_fftconvolve_complex,
 )
 from .vad_spp import (
     gerkmannSPP_STFT,
@@ -80,7 +79,6 @@ __all__ = [
     "slice2frames",
     "smoothCovarianceMatrix",
     "smoothCovarianceMatrix_conv",
-    "torchaudio_functional_fftconvolve_complex",
     "vad_opt_fast_gen",
     "vad_opt_original",
     "vad_opt_slow",

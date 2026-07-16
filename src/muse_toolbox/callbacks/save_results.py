@@ -14,11 +14,12 @@ log = logging.getLogger(__name__)
 class SaveTestResultsCallback(Callback):
     """Extracts test metrics and saves them to a CSV file dynamically."""
 
-    def __init__(self, save_dir: str) -> None:
+    def __init__(self, save_dir: str | None = None) -> None:
         """Initializes the callback.
 
         Args:
-            save_dir (str): The dynamic path provided by Hydra where CSVs should be saved.
+            save_dir (str | None): Optional explicit path. If None, it dynamically 
+                                   resolves using Hydra's runtime output dir.
         """
         super().__init__()
         self.save_dir = save_dir
@@ -59,23 +60,34 @@ class SaveTestResultsCallback(Callback):
             for key, value in complexity_metrics.items():
                 combined_df[key] = value
 
-        # 5. Build dynamic filename
-        if not os.path.exists(self.save_dir):
-            os.makedirs(self.save_dir)
-
-        model_name = getattr(pl_module, "model_name", "model")
-        block_size = getattr(pl_module, "block_size_frames", "")
-        pre_context = getattr(pl_module, "pre_context_frames", "")
-
-        if model_name == "BlockOnlineGSS":
-            filename = f"{model_name}_bl{block_size}_pc{pre_context}_results.csv"
+        # 3. Determine dynamic output directory
+        if self.save_dir is None:
+            # Fallback to Hydra's output directory, or the trainer's root dir
+            try:
+                from hydra.core.hydra_config import HydraConfig
+                base_dir = HydraConfig.get().runtime.output_dir
+            except Exception:
+                base_dir = trainer.default_root_dir
+                
+            # Use PyTorch Lightning state flags to determine split
+            split_folder = "test"
+            if trainer.validating:
+                split_folder = "val"
+            elif trainer.training:
+                split_folder = "train"
+                
+            out_dir = os.path.join(str(base_dir), split_folder, "results")
         else:
-            filename = f"{model_name}_results.csv"
+            out_dir = str(self.save_dir)
             
-        filepath = os.path.join(self.save_dir, filename)
+        os.makedirs(out_dir, exist_ok=True)
         
-        log.info(f"Saving test results to {filepath}")
-        combined_df.to_csv(filepath, index=True)
+        # 4. Save to CSV
+        for df in dataframes:
+            # Assuming the metric dataframe has a distinct identifier, or we just save combined
+            save_path = os.path.join(out_dir, "test_metrics.csv")
+            df.to_csv(save_path, index=False)
+            log.info(f"Saved metric results to {save_path}")
 
-        # 6. Reset
+        # 5. Reset metrics
         model.metric_collections["test"].reset()

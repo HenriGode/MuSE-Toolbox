@@ -1,9 +1,7 @@
 _target_: lightning.pytorch.Trainer
 accelerator: "auto"
-devices: [1]
+devices: [2]
 precision: 32
-max_epochs: 100
+max_epochs: 10
 
-# Custom fields accessible via ${trainer.sad_batch_size} interpolation
-sad_batch_size: 30
-sad_num_workers: 0
+# Note: Custom batch sizes are now handled via dataset.batch_size

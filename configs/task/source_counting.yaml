@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - override /model: cosad
+  - override /dataset: brudex_main
+
+task: source_counting
