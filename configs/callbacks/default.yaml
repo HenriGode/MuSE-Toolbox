@@ -5,3 +5,19 @@ model_checkpoint:
   save_top_k: 1
   mode: "min"
   save_last: True
+
+nan_guard:
+  _target_: muse_toolbox.callbacks.NaNGradientCallback
+
+complexity_profiler:
+  _target_: muse_toolbox.callbacks.ComplexityProfilerCallback
+  warmup_steps: 2
+  active_steps: 10
+
+causality_check:
+  _target_: muse_toolbox.callbacks.CausalityCheckCallback
+  allowed_latency_s: 0.010
+
+save_test_results:
+  _target_: muse_toolbox.callbacks.SaveTestResultsCallback
+  save_dir: "${paths.output_dir}/results/${model.model_name}/STFT_${transform.sampling_frequency}_${transform.nfft}_${transform.hop_length}"

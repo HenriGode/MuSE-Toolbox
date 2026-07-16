@@ -100,3 +100,13 @@ class BaseMetric(torchmetrics.Metric):
         #     # "noisy": (self.noisy_total.float() / self.numel).to("cuda"),
         #     "enhanced": (self.enhanced_total.float() / self.numel).to("cuda"),
         # }
+
+    def get_dataframe(self) -> pd.DataFrame | None:
+        """Returns a pandas DataFrame containing the metric's results.
+
+        Returns:
+            pd.DataFrame | None: The pandas DataFrame containing the metric's results, or None if not available.
+        """
+        raise NotImplementedError(
+            f"get_dataframe not implemented for {type(self).__name__}"
+        )
