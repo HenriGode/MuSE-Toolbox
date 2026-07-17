@@ -106,13 +106,16 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
         power_spec = batch.abs().pow(2)
 
         # Permute to (B, M, F, T) for MelScale
-        # MelScale expects (..., freq, time) or (..., freq)
-        # We want to apply it to the F dimension.
-        # If we pass (B, M, F, T), MelScale treats F as freq and T as time?
-        # torchaudio MelScale: forward(specgram: Tensor) -> Tensor
-        # "specgram (Tensor): Real spectrogram of dimension (..., freq, time)."
-        # So we need (B, M, F, T).
         power_spec = power_spec.permute(0, 2, 1, 3)
+
+        # Pad frequency dimension if DC/Nyquist were removed by STFT
+        pad_bottom = 1 if self.transform.remove_Nyquist else 0
+        pad_top = 1 if self.transform.remove_DC else 0
+        if pad_top > 0 or pad_bottom > 0:
+            # power_spec is (B, M, F, T), so F is the 2nd to last dim
+            power_spec = torch.nn.functional.pad(
+                power_spec, (0, 0, pad_top, pad_bottom)
+            )
 
         # Apply MelScale: (B, M, n_mels, T)
         mel_spec = self.mel_scale(power_spec)

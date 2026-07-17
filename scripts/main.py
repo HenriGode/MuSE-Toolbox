@@ -5,6 +5,12 @@ and dispatching to the correct pipeline based on the provided configuration.
 """
 
 import os
+from pathlib import Path
+
+# Resolve absolute path to project root and set environment variable for Hydra
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+os.environ["PROJECT_ROOT"] = str(PROJECT_ROOT)
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import logging

@@ -92,6 +92,7 @@ class GRU_estimator(BaseSourceCountEstimator):
         Returns:
             torch.Tensor: (B, T, C)
         """
+        #self.rnn.flatten_parameters()
         # Permute: (B, F, T) -> (B, T, F)
         rnn_out, _ = self.rnn(features.swapaxes(-1, -2))  # (B, F, T) -> (B, T, H)
         logits = self.fc(rnn_out)  # (B, T, H) -> (B, T, C)

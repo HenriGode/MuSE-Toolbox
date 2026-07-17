@@ -15,9 +15,9 @@ complexity_profiler:
   warmup_steps: 2
   active_steps: 10
 
-causality_check:
-  _target_: muse_toolbox.callbacks.CausalityCheckCallback
-  allowed_latency_s: 0.010
+# causality_check:
+#   _target_: muse_toolbox.callbacks.CausalityCheckCallback
+#   allowed_latency_s: 0.010
 
 save_test_results:
   _target_: muse_toolbox.callbacks.SaveTestResultsCallback

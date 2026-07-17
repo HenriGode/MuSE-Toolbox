@@ -17,9 +17,10 @@ predict: False
 predictions_dir: "predictions/default_run"
 
 paths:
-  log_dir: "logs/"
-  output_dir: "outputs/"
-  data_dir: "data/"
+  root_dir: ${oc.env:PROJECT_ROOT}
+  output_dir: ${paths.root_dir}/outputs
+  data_dir: ${paths.root_dir}/data
+  log_dir: ${paths.output_dir}/logging
 
 hydra:
   run:

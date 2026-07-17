@@ -68,15 +68,24 @@ If you are resuming development, here are the direct next steps needed to comple
   - *Completed:* Ported `COSADmodule` and `RTFmodule`.
   - *Completed:* Generated the Hydra configuration glue (`configs/task/`, `configs/model/`) to properly inject dependencies into the `pipelines/` scripts.
 
-- [ ] **1b. Integration Testing & Debugging**
-  - **Status:** *In Progress (Paused).* We have successfully booted the pipeline, resolved Hydra interpolation bugs (`${dataset.batch_size}` vs `sad_batch_size`), and fixed Torchaudio download `FileNotFoundError` bugs.
-  - **Next Step:** Manually move the existing `brudex/` base data and any cached datasets into the new `data/databases/` and `data/datasets/` directories. Once moved, resume the end-to-end `main.py` test run to ensure training fully executes.
+- [x] **1b. Integration Testing & Debugging**
+  - *Completed:* Resolved Hydra interpolation bugs, fixed Torchaudio dataset downloading bugs, successfully migrated `brudex/` base data.
+  - *Completed:* End-to-end `main.py` test run executed successfully without errors.
 
-- [ ] **1c. Output Directory Architecture Refactor**
+- [ ] **1c. Pipeline Validation & End-to-End Sanity Checks**
+  - **Status:** *In Progress.*
+  - **Next Step:** Design a specific minimal test experiment to validate the internal logic of the pipeline at every step (data loading, feature extraction, predictions, loss computation).
+
+- [ ] **1d. Output Directory Architecture Refactor**
   - Ensure the `.hydra`, `wandb`, `results`, `predictions`, and `audio` all log correctly inside the new `outputs/<task>/<experiment>/<timestamp>/<split>/` directory structure. Refactor Callbacks and Hydra config logging rules to achieve this.
 
-- [ ] **1d. HeterogeneousBatch Architectural Refactor**
+- [ ] **1e. HeterogeneousBatch Architectural Refactor**
   - Strip all DSP/Transform logic out of `HeterogeneousBatch` and move it directly into the PyTorch Lightning module `forward()` passes, ensuring it acts solely as a dumb data container. Detailed in `agent_history/HETEROGENEOUS_BATCH_REFACTOR.md`.
+
+- [ ] **1f. Algorithmic Latency & Real-Time Causal STFT Redesign**
+  - Transition STFT parameters to `center=False` to eliminate artificial future lookahead.
+  - Refactor Ground Truth framewise alignment to anchor on the end of the STFT window.
+  - Rewrite `CausalityCheckCallback` into `AlgorithmicLatencyCallback` with static perturbation-based testing. Detailed in `agent_history/algorithmic_latency_design.md`.
 
 - [ ] **2. Setup the AMI Dataset**
   - Introduce the full AMI corpus integration inside the `data/` directory. Build out the `Database`, `Dataset`, and `DataModule` wrappers.

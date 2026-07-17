@@ -2,7 +2,7 @@
 
 from muse_toolbox.utils.profiling_utils import LineTimer, CodeTimer, time_string, time_function, print_gpu_tensors
 from muse_toolbox.utils.debug_utils import print_structure, deep_equal
-from muse_toolbox.utils.format_utils import format_memory, format_flops, format_parameters
+from muse_toolbox.utils.format_utils import format_memory, format_flops, format_parameters, format_time
 from muse_toolbox.utils.math import (
     db2amp, db2pow, amp2db, pow2db, rad2deg, deg2rad,
     hermitian_angle, complex_angle, subspace_angles, atan2, atan3, quadrant,
@@ -180,6 +180,7 @@ __all__ = [
     "format_parameters",
     "format_flops",
     "format_memory",
+    "format_time",
     "deep_equal",
     "print_structure",
     "print_gpu_tensors",

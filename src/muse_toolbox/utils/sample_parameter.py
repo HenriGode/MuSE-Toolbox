@@ -1,5 +1,6 @@
 import random
 from typing import TypeVar, Any, overload
+from omegaconf import OmegaConf, ListConfig, DictConfig
 
 intfloatstr = TypeVar('intfloatstr', int, float, str)
 
@@ -52,6 +53,8 @@ def sample_parameter(
     Returns:
         A single sampled value or a list/dict of sampled values.
     """
+    if isinstance(param, (ListConfig, DictConfig)):
+        param = OmegaConf.to_container(param, resolve=True)
 
     def _get_single_sample() -> Any:
         if isinstance(param, (int, float, str)):

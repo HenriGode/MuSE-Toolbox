@@ -3,6 +3,7 @@
 import logging
 import torch
 from lightning.pytorch import Callback, Trainer, LightningModule
+from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 
 log = logging.getLogger(__name__)
 
@@ -26,17 +27,21 @@ class CausalityCheckCallback(Callback):
             trainer (Trainer): PyTorch Lightning trainer.
             pl_module (LightningModule): The active PyTorch Lightning module.
         """
+        # Safely check if causality checking is disabled via model hyperparameters
+        check_causality = getattr(pl_module, "check_causality", None)
+        if check_causality is None and hasattr(pl_module, "hparams"):
+            check_causality = pl_module.hparams.get("check_causality", True)
+        if check_causality is None:
+            check_causality = True
+
+        if not check_causality:
+            log.info("Causality check disabled for this model (check_causality=False).")
+            return
+
         pl_module.eval()
 
         num_channels = getattr(pl_module, "num_channels", 1)
-        binaural = getattr(pl_module, "binaural", False)
-        model_name = getattr(pl_module, "model_name", "")
         fs = getattr(pl_module, "fs", 16000)
-
-        if "Bilat" in model_name or model_name == "BiConvTasNet":
-            binaural = True
-        if binaural:
-            num_channels *= 2
 
         allowed_latency = int(self.allowed_latency_s * fs)
         sig_len_range = [2.0, 8.0]
@@ -55,13 +60,26 @@ class CausalityCheckCallback(Callback):
             
             p = torch.randint(0, length, (1,)).item()
             sig[p:] = float("nan")
-            sig = sig.unsqueeze(0).unsqueeze(0)
-            sig = sig.repeat(1, num_channels, 1)
+            
+            # HeterogeneousBatch expects a list of (Channels, Time)
+            sig_channel = sig.unsqueeze(0).repeat(num_channels, 1)
+            batch = HeterogeneousBatch(raw_audio=[sig_channel.to(pl_module.device)])
+            batch.to(pl_module.device)
 
-            inp = {"input": sig.to(pl_module.device)}
             with torch.no_grad():
-                out = pl_module(inp)
-                est_sig = out.get("input_proc", out.get("estimates", None))
+                out = pl_module(batch)
+                
+                # Try to find the estimates tensor. Depending on the model, it might be in different places.
+                est_sig = None
+                if getattr(out, "padded_estimates", None) is not None:
+                    est_sig = out.padded_estimates
+                elif getattr(out, "estimates", None) is not None:
+                    if isinstance(out.estimates, list) and len(out.estimates) > 0:
+                        est_sig = out.estimates[0].unsqueeze(0)
+                    else:
+                        est_sig = out.estimates
+                elif isinstance(out, dict):
+                    est_sig = out.get("input_proc", out.get("estimates", None))
                 
                 if est_sig is None:
                     log.warning("CausalityCheckCallback could not find output tensor to check.")
