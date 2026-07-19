@@ -1,0 +1,31 @@
+# configs/dataset/brudex.yaml
+# Tier 3 configuration specific to the BRUDEX dataset.
+
+defaults:
+  - base_simulated_dataset
+
+_target_: muse_toolbox.data.BrudexDataModule
+id: "J3_BXLS_test"
+
+# Specific physical acoustic parameters for BRUDEX
+brudex_config:
+  _target_: muse_toolbox.data.BrudexConfig
+  reverb_conditions: ["low"]
+  microphone_arrays: [
+    "BTE_IE",
+    "BTE",
+    "BTE_front",
+    "BTE_rear",
+    "BTE_front_IE",
+    "BTE_rear_IE",
+    "BTE_left_IE_right",
+    "BTE_right_IE_left",
+    ]
+  noise_types: 
+    - ["babble", "white"]
+    - ["babble"]
+    - ["cafeteria"]
+  doas: 
+    - [30, -60, 120, -150]
+    - [-30, 90, 150, 180]
+    - [0, 60, -90, -120]

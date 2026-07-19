@@ -2,6 +2,6 @@
 
 defaults:
   - override /model: cosad
-  - override /dataset: brudex_main
+  - override /dataset: brudex
 
 task: source_counting

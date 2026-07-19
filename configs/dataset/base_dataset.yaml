@@ -1,0 +1,23 @@
+# configs/dataset/base_dataset.yaml
+# Universal parameters shared by all datasets (simulated and real-world).
+
+data_dir: ${paths.data_dir}
+batch_size: 10
+num_workers: 0
+seed: 777
+acc_device: "cpu"
+
+# Even real-world datasets like AMI will be resampled to this target
+sampling_frequency: 8000
+
+# Triggers recalculation/recomputation of the precomputed dataset features
+reset: False
+
+# Global STFT transform injected from the main config space
+transform: ${transform}
+
+# Dynamically inject the feature extractor from the model
+feature_extractor: ${oc.select:model.feature_extractor,null}
+
+# Force the load of stft when True (instead of precomputed features)
+force_load_stft: False

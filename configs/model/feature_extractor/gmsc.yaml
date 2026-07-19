@@ -1,0 +1,3 @@
+_target_: muse_toolbox.models.components.feature_extractors.GMSC_Feature_Extractor
+_partial_: true
+smoothing_time_constant: 1.0

@@ -54,7 +54,10 @@ def sample_parameter(
         A single sampled value or a list/dict of sampled values.
     """
     if isinstance(param, (ListConfig, DictConfig)):
-        param = OmegaConf.to_container(param, resolve=True)
+        resolved_param = OmegaConf.to_container(param, resolve=True)
+        if resolved_param is None:
+            raise ValueError("Resolved parameter cannot be None.")
+        param = resolved_param
 
     def _get_single_sample() -> Any:
         if isinstance(param, (int, float, str)):
@@ -74,10 +77,17 @@ def sample_parameter(
                     return random.uniform(float(low), float(high))
             else:  # Assumes a tuple of choices
                 return random.choice(param)
-        # Handle any dictionary by sampling a single key-value pair
+        # Handle any dictionary by sampling a single key-value pair, UNLESS it is a min/max range dict
         elif isinstance(param, dict):
-            key = random.choice(list(param.keys()))
-            return {key: param[key]}
+            if "min" in param and "max" in param and len(param) == 2:
+                low, high = param["min"], param["max"]
+                if isinstance(low, int) and isinstance(high, int):
+                    return random.randint(low, high)
+                else:
+                    return random.uniform(float(low), float(high))
+            else:
+                key = random.choice(list(param.keys()))
+                return {key: param[key]}
         else:
             raise TypeError(f"Unsupported type for parameter: {param}")
 
@@ -101,14 +111,21 @@ def sample_parameter(
                         f"Cannot sample {num} unique items from a list of size {len(param)}."
                     )
                 return random.sample(param, k=num)
-        # Handle any dictionary by sampling 'num' key-value pairs
+        # Handle any dictionary by sampling 'num' key-value pairs, UNLESS it is a min/max range dict
         elif isinstance(param, dict):
-            if num > len(param):
-                raise ValueError(
-                    f"Cannot sample {num} unique items from a dictionary of size {len(param)}."
-                )
-            keys = random.sample(list(param.keys()), k=num)
-            return {key: param[key] for key in keys}
+            if "min" in param and "max" in param and len(param) == 2:
+                low, high = param["min"], param["max"]
+                if isinstance(low, int) and isinstance(high, int):
+                    return [random.randint(low, high) for _ in range(num)]
+                else:
+                    return [random.uniform(float(low), float(high)) for _ in range(num)]
+            else:
+                if num > len(param):
+                    raise ValueError(
+                        f"Cannot sample {num} unique items from a dictionary of size {len(param)}."
+                    )
+                keys = random.sample(list(param.keys()), k=num)
+                return {key: param[key] for key in keys}
         # If param is a single value, return a list of that value repeated num times
         elif isinstance(param, (int, float, str)):
             if num > 1:

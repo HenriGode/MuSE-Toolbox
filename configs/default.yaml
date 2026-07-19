@@ -1,11 +1,12 @@
 defaults:
-  - dataset: brudex_main
+  - dataset: brudex
   - model: cosad
   - transform: default
   - trainer: default
   - logger: wandb
   - callbacks: default
   - task: null
+  - experiment: J3_brudex
   - _self_
 
 # Global settings
@@ -24,8 +25,8 @@ paths:
 
 hydra:
   run:
-    dir: outputs/${task}/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: outputs/${task}/${experiment_name}/multirun
+    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/multirun
     subdir: ${hydra.job.num}
   output_subdir: logging/.hydra

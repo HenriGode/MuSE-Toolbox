@@ -1,4 +1,0 @@
-sampling_rate: 8000
-stft:
-  frame_length: 0.064
-  frame_shift: 0.016

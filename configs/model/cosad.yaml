@@ -1,25 +1,12 @@
+defaults:
+  - feature_extractor: wgmsc
+
 _target_: muse_toolbox.models.source_counting.cosad.COSADmodule
 
 # These will be resolved dynamically from other parts of the config tree
 transform: ${transform}
 batch_size: ${dataset.batch_size}
 
-# Instead of looping through lists, Hydra allows us to define the active component here.
-# To sweep across different feature extractors, you would use:
-# python scripts/main.py -m model.feature_extractor._target_=...
-feature_extractor:
-  _target_: muse_toolbox.models.components.feature_extractors.Condensed_LogMel_Feature_Extractor
-  _partial_: true
-  mode: "ref"
-  ref_channel: 0
-  n_mels: 80
-  f_min: 80
-  f_max: null
-  condense_method: "conv"
-  max_channels: 6
-  num_layers: 2
-  kernel_size: 3
-  dropout: 0.0
 
 source_count_estimator:
   _target_: muse_toolbox.models.source_counting.estimators.GRU_estimator
@@ -59,7 +46,7 @@ metrics_val:
   MSE: {}
   Accuracy: {}
   ConfusionMatrix:
-    max_sources: 3
+    max_sources: ${dataset.generation_config.max_sources}
     stage: "val"
 
 metrics_test:
@@ -69,7 +56,7 @@ metrics_test:
   MSE: {}
   Accuracy: {}
   ConfusionMatrix:
-    max_sources: 3
+    max_sources: ${dataset.generation_config.max_sources}
     stage: "test"
 
 compute_complexity_metrics: False

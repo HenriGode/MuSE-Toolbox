@@ -1,0 +1,32 @@
+# configs/dataset/base_pra_anf.yaml
+# Intermediate base configuration for all PRA_ANF simulated datasets
+
+defaults:
+  - base_simulated_dataset
+
+_target_: muse_toolbox.data.PraAnfDataModule
+
+noise_databases:
+  Demand:
+    class: DemandDatabase
+    train_envs: ["DKITCHEN", "DLIVING", "DWASHING", "NFIELD", "NPARK", "NRIVER", "OHALLWAY", "OMEETING", "OOFFICE", "PCAFETER", "PRESTO", "PSTATION"]
+    val_envs: ["TBUS", "TCAR", "TMETRO"]
+    test_envs: ["SCAFE", "SPSQUARE", "STRAFFIC"]
+
+pra_anf_config:
+  _target_: muse_toolbox.data.PraAnfConfig
+  room_dims:
+    - min: 4.0
+      max: 8.0
+    - min: 4.0
+      max: 8.0
+    - min: 2.5
+      max: 4.0
+  rt60s:
+    min: 0.2
+    max: 0.8
+  mic_array_min_distance: 1.5
+  sources_min_distance: 0.5
+  min_doa_between_sources: 30.0
+  mic_array_position: null # Randomly placed inside the room
+  fix_source_heights: 1.5

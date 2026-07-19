@@ -1,0 +1,9 @@
+_target_: muse_toolbox.models.components.feature_extractors.Condensed_IPD_Feature_Extractor
+_partial_: true
+mode: "ref"
+ref_channel: 0
+condense_method: "conv"
+max_channels: 8
+num_layers: 2
+kernel_size: 3
+dropout: 0.0

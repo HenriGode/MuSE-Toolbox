@@ -1,0 +1,21 @@
+_target_: muse_toolbox.models.components.feature_extractors.StackedFeatureExtractor
+_partial_: true
+extractors:
+  - Condensed_LogMel_Feature_Extractor:
+      mode: "ref"
+      ref_channel: 0
+      n_mels: 80
+      f_min: 80
+      f_max: null
+      condense_method: "conv"
+      max_channels: 6
+      num_layers: 2
+      kernel_size: 3
+      dropout: 0.0
+  - WGMSC_Feature_Extractor:
+      smoothing_time_constant: 1.0
+      whitening_time_constant: 1.0
+      smoothing_time_constant_rev: 1.0
+      whitening_time_constant_rev: 1.0
+      rev_features: true
+      wideband_features: false

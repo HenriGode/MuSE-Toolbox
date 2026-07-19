@@ -1,0 +1,7 @@
+_target_: muse_toolbox.models.components.feature_extractors.STFT_Conv_Feature_Encoder
+_partial_: true
+out_channels: 64
+kernel_size: 3
+num_layers: 3
+dropout: 0.0
+max_channels: 8

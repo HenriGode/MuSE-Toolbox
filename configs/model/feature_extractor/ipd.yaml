@@ -1,0 +1,4 @@
+_target_: muse_toolbox.models.components.feature_extractors.IPD_Feature_Extractor
+_partial_: true
+mode: "ref"
+ref_channel: 0

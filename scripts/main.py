@@ -16,7 +16,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import logging
 import hydra
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from muse_toolbox.pipelines.source_counting_pipeline import run_source_counting_pipeline
 from muse_toolbox.pipelines.rtf_estimation_pipeline import run_rtf_estimation_pipeline

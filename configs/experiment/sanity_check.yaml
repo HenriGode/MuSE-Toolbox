@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - override /task: source_counting
+  - override /model: cosad
+  - override /dataset: pra_anf_circ_8ch # brudex
+
+trainer:
+  max_epochs: 2
+  limit_train_batches: 2
+  limit_val_batches: 2
+  limit_test_batches: 2
+
+dataset:
+  id: "J3_sanity_check"
+  batch_size: 2
+  num_scenarios: [4, 4, 4]

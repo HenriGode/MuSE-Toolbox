@@ -1,0 +1,183 @@
+dataset:
+  data_dir: ${paths.data_dir}
+  batch_size: 10
+  num_workers: 0
+  seed: 777
+  acc_device: cpu
+  sampling_frequency: 8000
+  reset: false
+  transform: ${transform}
+  num_scenarios:
+  - 4800
+  - 600
+  - 600
+  clean_speech_databases:
+    Librispeech:
+      class: LibriSpeechDatabase
+  generation_config:
+    _target_: muse_toolbox.data.ScenarioGenerationConfig
+    max_sources: 4
+    signal_lengths: 60.0
+    initial_noise_only_duration:
+      min: 0.5
+      max: 5.0
+    snrs:
+      min: 5.0
+      max: 20.0
+    source_power_range: 0.0
+    time_between_events:
+      min: 0.5
+      max: 5.0
+    activations_only: false
+    remove_silence: true
+    neglect_silence4oracle_sa: 0.4
+    bridge_clean_speech_gaps: 0.1
+    vad_threshold2define_oracle: -60
+    vad_threshold2select_clean_speech: -30
+    fix_seglen: false
+  _target_: muse_toolbox.data.BrudexDataModule
+  id: J3_BXLS_test
+  brudex_config:
+    _target_: muse_toolbox.data.BrudexConfig
+    reverb_conditions:
+    - low
+    microphone_arrays:
+    - BTE_IE
+    - BTE
+    - BTE_front
+    - BTE_rear
+    - BTE_front_IE
+    - BTE_rear_IE
+    - BTE_left_IE_right
+    - BTE_right_IE_left
+    noise_types:
+    - - babble
+      - white
+    - - babble
+    - - cafeteria
+    doas:
+    - - 30
+      - -60
+      - 120
+      - -150
+    - - -30
+      - 90
+      - 150
+      - 180
+    - - 0
+      - 60
+      - -90
+      - -120
+model:
+  feature_extractor:
+    _target_: muse_toolbox.models.components.feature_extractors.Condensed_LogMel_Feature_Extractor
+    _partial_: true
+    mode: ref
+    ref_channel: 0
+    n_mels: 80
+    f_min: 80
+    f_max: null
+    condense_method: conv
+    max_channels: 8
+    num_layers: 2
+    kernel_size: 3
+    dropout: 0.0
+  _target_: muse_toolbox.models.source_counting.cosad.COSADmodule
+  transform: ${transform}
+  batch_size: ${dataset.batch_size}
+  source_count_estimator:
+    _target_: muse_toolbox.models.source_counting.estimators.GRU_estimator
+    _partial_: true
+    max_sources: ${dataset.generation_config.max_sources}
+    hidden_size: 1.0
+    num_layers: 2
+    dropout: 0.0
+    bias: true
+  loss_config:
+    CrossEntropy:
+      weight: null
+  optimizer_config:
+    AdamW:
+      lr: 0.0001
+      weight_decay: 0.01
+  lr_scheduler_config:
+    ReduceLROnPlateau:
+      monitor: val/loss
+      mode: min
+      factor: 0.5
+      patience: 3
+      threshold: 0.0001
+      threshold_mode: rel
+      cooldown: 0
+      min_lr: 1.0e-07
+      eps: 1.0e-08
+  metrics_train: {}
+  metrics_val:
+    TolerantEventF1:
+      tolerance_time: 0.5
+    MAE: {}
+    MSE: {}
+    Accuracy: {}
+    ConfusionMatrix:
+      max_sources: ${dataset.generation_config.max_sources}
+      stage: val
+  metrics_test:
+    TolerantEventF1:
+      tolerance_time: 0.5
+    MAE: {}
+    MSE: {}
+    Accuracy: {}
+    ConfusionMatrix:
+      max_sources: ${dataset.generation_config.max_sources}
+      stage: test
+  compute_complexity_metrics: false
+  check_causality: false
+transform:
+  _target_: muse_toolbox.utils.STFTtransform
+  frame_length: 0.064
+  frame_shift: 0.016
+  sampling_frequency: 8000
+  window_type: sqrt-hann
+trainer:
+  _target_: lightning.pytorch.Trainer
+  accelerator: auto
+  devices:
+  - 2
+  precision: 32
+  max_epochs: 10
+logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: J3_Experiments
+  name: Gode_Baseline_Deactivation
+  group: SAD
+  dir: ${hydra:runtime.output_dir}/logging
+  save_dir: ${hydra:runtime.output_dir}/logging
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: val/loss
+    filename: '{epoch:02d}-{val_loss:.2f}'
+    save_top_k: 5
+    mode: min
+    save_last: true
+    dirpath: ${hydra:runtime.output_dir}/checkpoints
+  nan_guard:
+    _target_: muse_toolbox.callbacks.NaNGradientCallback
+  complexity_profiler:
+    _target_: muse_toolbox.callbacks.ComplexityProfilerCallback
+    warmup_steps: 2
+    active_steps: 10
+  save_test_results:
+    _target_: muse_toolbox.callbacks.SaveTestResultsCallback
+task: source_counting
+experiment_name: default_exp
+train: true
+test: true
+predict: false
+predictions_dir: predictions/default_run
+paths:
+  root_dir: ${oc.env:PROJECT_ROOT}
+  output_dir: ${paths.root_dir}/outputs
+  data_dir: ${paths.root_dir}/data
+  log_dir: ${paths.output_dir}/logging
+
