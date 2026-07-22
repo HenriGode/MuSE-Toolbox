@@ -4,6 +4,8 @@ defaults:
   - override /model: cosad
   - override /dataset: pra_anf_circ_8ch # This will be dynamically overridden by multirun
 
+experiment_name: J3_feature_comparison
+
 logger:
-  project: "J3_Experiments"
-  name: "PRA_ANF_${dataset.id}_Baseline_WGMSC"
+  project: "${experiment_name}"
+  name: "PRA_ANF_${dataset.id}_${hydra:runtime.choices.model/feature_extractor}"

@@ -4,15 +4,15 @@
 defaults:
   - base_pra_anf
 
-id: "J3_PRAANF_rand_8ch"
+id: "J3_PRAANF_rand_8ch_20cm"
 
 pra_anf_config:
   microphone_arrays:
     - num_mics: 8
       geometry: square_area
       distribution: random
-      max_distance: 0.10 # 10x10cm bounding box
-      min_distance: 0.01 # 1cm minimum distance between mics
+      max_distance: 0.20 # 10x10cm bounding box
+      min_distance: 0.02 # 1cm minimum distance between mics
       rotation: random
       restrict_rot_2_xy_plane: True
       fix_height: 1.5

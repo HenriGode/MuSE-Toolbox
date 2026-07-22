@@ -107,6 +107,10 @@ If you are resuming development, here are the direct next steps needed to comple
   - Expand the practice of including contextual `README.md` files in both the `src/` subdirectories (detailing architectural data-flow) and `configs/` subdirectories (detailing hyperparameter tuning).
   - Propagate this documentation style to all other component directories (e.g., `estimators`, `data`, `metrics`), matching what was done for `feature_extractors`.
 
+- [ ] **Dataset source power rations adjust to 5dB instead fo 0**
+  - Adjust sourc epower range to 5 db maybe instead of 0 db as it is now
+
+
 - [ ] **2. Implement the Decoupled Channel Combinator Architecture**
   - Implement the new processing flow by formally decoupling the channel condensation logic from the raw feature extraction.
   - Create a new `channel_combinators` subdirectory in both `src/muse_toolbox/models/components/` and `configs/model/`.

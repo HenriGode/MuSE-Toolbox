@@ -2,6 +2,8 @@
 defaults:
   - override /dataset: brudex
 
+experiment_name: J3_feature_comparison
+
 logger:
-  project: "J3_Experiments"
-  name: "Gode_Baseline_Deactivation"
+  project: "${experiment_name}"
+  name: "Brudex"

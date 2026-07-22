@@ -4,14 +4,14 @@
 defaults:
   - base_pra_anf
 
-id: "J3_PRAANF_circ_8ch"
+id: "J3_PRAANF_circ_8ch_20cm"
 
 pra_anf_config:
   microphone_arrays:
     - num_mics: 8
       geometry: circle
       distribution: regular
-      radius: 0.05
+      radius: 0.1
       rotation: random
       restrict_rot_2_xy_plane: True
       fix_height: 1.5

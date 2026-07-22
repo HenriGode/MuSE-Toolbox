@@ -6,8 +6,8 @@ defaults:
   - logger: wandb
   - callbacks: default
   - task: null
-  - experiment: J3_brudex
   - _self_
+  - experiment: J3_brudex
 
 # Global settings
 task: source_counting
