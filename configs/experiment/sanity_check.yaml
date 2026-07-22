@@ -14,3 +14,4 @@ dataset:
   id: "J3_sanity_check"
   batch_size: 2
   num_scenarios: [4, 4, 4]
+  reset: True

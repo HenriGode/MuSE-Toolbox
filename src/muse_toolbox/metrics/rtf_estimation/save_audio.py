@@ -92,7 +92,19 @@ class SAVE_AUDIO(BaseMetric):
             dataset_id, split_name, scenario_id = self._split_scenario_id(
                 meta["scenario_id"][bidx]
             )
-            savedir = f"./output_audio/J2_RUN/{dataset_id}/STFT_{self.transform.sampling_frequency}_{self.transform.nfft}_{self.transform.hop_length}/{self.sad_model_name}/{split_name}"
+            
+            try:
+                from hydra.core.hydra_config import HydraConfig
+                base_dir = HydraConfig.get().runtime.output_dir
+            except Exception:
+                base_dir = "./"
+                
+            savedir = os.path.join(
+                str(base_dir), 
+                split_name, 
+                "output_audio", 
+                dataset_id,
+            )
             if self.model_name == "BlockOnlineGSS":
                 save_dir_model = f"{savedir}/{self.model_name}_bl{self.block_size_frames}_pc{self.pre_context_frames}"
             else:

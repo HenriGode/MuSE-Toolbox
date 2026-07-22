@@ -4,7 +4,7 @@
 defaults:
   - base_dataset
 
-num_scenarios: [2400, 300, 300] # [4, 20, 10]
+num_scenarios: [1200, 150, 150] # [4, 20, 10]
 clean_speech_databases:
   Librispeech:
     class: LibrispeechDatabase
@@ -13,21 +13,22 @@ clean_speech_databases:
 generation_config:
   _target_: muse_toolbox.data.ScenarioGenerationConfig
   max_sources: 4
-  signal_lengths: 60.0
+  signal_lengths: 120.0
   initial_noise_only_duration:
-    min: 0.5
+    min: 1.0
     max: 5.0
   snrs: 
     min: 5.0
     max: 20.0
   source_power_range: 0.0
   time_between_events:
-    min: 0.5
-    max: 5.0
+    min: 1.0
+    max: 10.0
   activations_only: False
-  remove_silence: True
-  neglect_silence4oracle_sa: 0.4
-  bridge_clean_speech_gaps: 0.1
-  vad_threshold2define_oracle: -60
+  remove_silence: False
   vad_threshold2select_clean_speech: -30
+  bridge_clean_speech_gaps: 0.25
+  vad_threshold2define_oracle: -30
+  neglect_silence4oracle_sa: 1.0
   fix_seglen: False
+  save_signal_components: False # We do not store signals components as we want to save disk space and do not need them for the source counting task

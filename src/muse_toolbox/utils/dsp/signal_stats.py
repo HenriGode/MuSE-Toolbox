@@ -33,8 +33,8 @@ def smoothCovarianceMatrix(
     Args:
         stft_signal (torch.Tensor): STFT signal of shape (..., F, M, T).
         smoothing_factor (float): Smoothing factor for exponential windowing.
-        init_cov (Optional[torch.Tensor]): Initial covariance matrix for warm start. Shape (..., F, 1, M, M).
-        init_smoothing_factor (Optional[float]): Smoothing factor used for initial covariance.
+        init_cov (torch.Tensor | None): Initial covariance matrix for warm start. Shape (..., F, 1, M, M).
+        init_smoothing_factor (float | None): Smoothing factor used for initial covariance.
 
     Returns:
         torch.Tensor: Smoothed covariance matrix of shape (..., F, T, M, M).

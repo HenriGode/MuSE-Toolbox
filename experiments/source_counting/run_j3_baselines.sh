@@ -23,7 +23,7 @@ for i in ${!datasets[@]}; do
     
     # Create a new detached tmux session that runs the python command.
     # We use Hydra overrides to set the exact dataset and trainer.devices=[$gpu]
-    tmux new-session -d -s $session_name "python scripts/main.py experiment=J3_pra_anf dataset=$dataset trainer.devices=[$gpu]"
+    tmux new-session -d -s $session_name "source /opt/anaconda3/etc/profile.d/conda.sh && conda activate j3 && python scripts/main.py experiment=J3_pra_anf dataset=$dataset trainer.devices=[$gpu]"
     
     # Sleep briefly to ensure the session initializes without file I/O collisions
     sleep 5

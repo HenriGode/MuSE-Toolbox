@@ -15,7 +15,7 @@ experiment_name: default_exp
 train: True
 test: True
 predict: False
-predictions_dir: "predictions/default_run"
+predictions_dir: null
 
 paths:
   root_dir: ${oc.env:PROJECT_ROOT}

@@ -31,8 +31,8 @@ def plot_spectrogram(
         transform (STFTtransform): A transform object containing sampling_frequency, nfft, and frame_shift attributes.
         title (str): Title of the plot. Defaults to "Spectrogram".
         clabel (str): Color bar label. Defaults to "Magnitude (dB)".
-        clim (Optional[tuple]): Color limits for the plot `(vmin, vmax)`. Defaults to None.
-        savename (Optional[str]): Path to save the plot. If None, displays it instead. Defaults to None.
+        clim (tuple | None): Color limits for the plot `(vmin, vmax)`. Defaults to None.
+        savename (str | None): Path to save the plot. If None, displays it instead. Defaults to None.
     """
     log.debug(f"Plotting spectrogram with title '{title}'.")
     # Convert the signal to a NumPy array (assuming 4D input with dimensions as per your original code)
@@ -96,7 +96,7 @@ def plot_phaseogram(
         transform (STFTtransform): A transform object containing sampling_frequency, nfft, and frame_shift attributes.
         title (str): Title of the plot. Defaults to "Phaseogram".
         clabel (str): Color bar label. Defaults to "Phase (rad)".
-        savename (Optional[str]): Path to save the plot. If None, displays it instead. Defaults to None.
+        savename (str | None): Path to save the plot. If None, displays it instead. Defaults to None.
     """
     log.debug(f"Plotting phaseogram with title '{title}'.")
     # Convert the signal to a NumPy array (assuming 4D input with dimensions as per your original code)
@@ -152,8 +152,8 @@ def plot_coherence(
     Args:
         STFT_signal (torch.Tensor): A torch tensor containing the STFT signal.
         transform (STFTtransform): The STFT transform configuration.
-        title (Optional[str]): Optional title for the figure. Defaults to None.
-        savename (Optional[str]): Optional path to save the figure. If None, it will be displayed. Defaults to None.
+        title (str | None): Optional title for the figure. Defaults to None.
+        savename (str | None): Optional path to save the figure. If None, it will be displayed. Defaults to None.
         mode (str): Plotting mode. Either "batch" or "framewise". Defaults to "batch".
     """
     log.debug(f"Plotting coherence in '{mode}' mode.")

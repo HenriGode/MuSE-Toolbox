@@ -88,12 +88,12 @@ If you are resuming development, here are the direct next steps needed to comple
   - *Completed:* Resolved Hydra interpolation bugs, fixed Torchaudio dataset downloading bugs, successfully migrated `brudex/` base data.
   - *Completed:* End-to-end `main.py` test run executed successfully without errors.
 
-- [ ] **1c. Pipeline Validation & End-to-End Sanity Checks**
-  - **Status:** *In Progress.*
-  - **Next Step:** Design a specific minimal test experiment to validate the internal logic of the pipeline at every step (data loading, feature extraction, predictions, loss computation).
+- [x] **1c. Pipeline Validation & End-to-End Sanity Checks**
+  - *Completed:* Runtime sanity checks with `brudex` and `pra_anf` datasets executed successfully. The code and Hydra configs run end-to-end without errors.
+  - *Pending (Ongoing):* A thorough mathematical/behavioral investigation to ensure all internal logic (data loading, feature extraction, predictions, loss computation) performs exactly as intended.
 
-- [ ] **1d. Output Directory Architecture Refactor**
-  - Ensure the `.hydra`, `wandb`, `results`, `predictions`, and `audio` all log correctly inside the new `outputs/<task>/<experiment>/<timestamp>/<split>/` directory structure. Refactor Callbacks and Hydra config logging rules to achieve this.
+- [x] **1d. Output Directory Architecture Refactor**
+  - *Completed:* The `.hydra`, `wandb`, `results`, `predictions`, and `audio` all log correctly inside the new `outputs/<task>/<experiment>/<timestamp>/<split>/` directory structure. Refactored Callbacks and Hydra config logging rules to achieve this.
 
 - [ ] **1e. HeterogeneousBatch Architectural Refactor**
   - Strip all DSP/Transform logic out of `HeterogeneousBatch` and move it directly into the PyTorch Lightning module `forward()` passes, ensuring it acts solely as a dumb data container. Detailed in `agent_history/HETEROGENEOUS_BATCH_REFACTOR.md`.

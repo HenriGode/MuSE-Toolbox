@@ -85,71 +85,91 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
         _ = trainer.test(model, datamodule=datamodule)
         
     # 7. Predict and Save (Optional)
+    predict_flag = cfg.get("predict", False)
     predictions_dir = cast(str | None, cfg.get("predictions_dir", None))
     
-    if cfg.get("predict", False) and predictions_dir is not None:
-        log.info(f"Running prediction and saving results to {predictions_dir}...")
-        os.makedirs(predictions_dir, exist_ok=True)
+    if predict_flag:
+        predict_splits = cfg.get("predict_splits", ["test"])
         
+        # Determine base_dir for dynamic resolution
+        try:
+            from hydra.core.hydra_config import HydraConfig
+            base_dir = str(HydraConfig.get().runtime.output_dir)
+        except Exception:
+            base_dir = str(trainer.default_root_dir)
+
         # Determine checkpoint path (use best if available)
         ckpt_path = cast(str | None, "best" if cfg.get("train", True) else None)
         
-        # We can predict on the test_dataloader
-        test_ds = getattr(datamodule, "test_ds", None)
-        if test_ds is None:
-            datamodule.setup("test")
-            test_ds = getattr(datamodule, "test_ds", None)
+        for split in predict_splits:
+            if predictions_dir is None:
+                split_predictions_dir = os.path.join(base_dir, split, "predictions")
+            else:
+                split_predictions_dir = predictions_dir
+                
+            log.info(f"Running prediction for split '{split}' and saving results to {split_predictions_dir}...")
+            os.makedirs(split_predictions_dir, exist_ok=True)
             
-        if test_ds is None:
-            raise ValueError("DataModule did not create a 'test_ds' attribute during setup('test').")
-            
-        # Split test dataset into two halves to avoid OOM (Restored from old J1_RUN)
-        len_test_ds = len(cast(Sized, test_ds))
-        split_idx = len_test_ds // 2
-        indices_parts = [
-            list(range(0, split_idx)),
-            list(range(split_idx, len_test_ds)),
-        ]
+            # Setup datamodule for the split
+            ds = getattr(datamodule, f"{split}_ds", None)
+            if ds is None:
+                datamodule.setup(split)
+                ds = getattr(datamodule, f"{split}_ds", None)
+                
+            if ds is None:
+                raise ValueError(f"DataModule did not create a '{split}_ds' attribute during setup('{split}').")
+                
+            # Split dataset into two halves to avoid OOM
+            len_ds = len(cast(Sized, ds))
+            split_idx = len_ds // 2
+            indices_parts = [
+                list(range(0, split_idx)),
+                list(range(split_idx, len_ds)),
+            ]
 
-        for i, indices in enumerate(indices_parts):
-            if not indices:
-                continue
+            for i, indices in enumerate(indices_parts):
+                if not indices:
+                    continue
 
-            log.info(f"Predicting part {i+1}/2 ({len(indices)} samples)...")
-            subset_ds = torch.utils.data.Subset(cast("torch.utils.data.Dataset[object]", test_ds), indices)
-            subset_dl = torch.utils.data.DataLoader(
-                subset_ds,
-                batch_size=getattr(datamodule, "batch_size", 1),
-                num_workers=getattr(datamodule, "num_workers", 0),
-                shuffle=False,
-                collate_fn=getattr(cast(object, test_ds), "collate_fn", None),
-            )
-            
-            predictions = trainer.predict(model, dataloaders=subset_dl, ckpt_path=ckpt_path)
-            
-            # Save predictions using the logic from J1_RUN
-            if isinstance(predictions, list):
-                for batch in predictions:
-                    if isinstance(batch, HeterogeneousBatch):
-                        est_activity = batch.estimates
-                        if not isinstance(est_activity, list):
-                            raise ValueError("Expected batch.estimates to be a list of tensors.")
+                log.info(f"Predicting part {i+1}/2 ({len(indices)} samples) for '{split}'...")
+                subset_ds = torch.utils.data.Subset(cast("torch.utils.data.Dataset[object]", ds), indices)
+                subset_dl = torch.utils.data.DataLoader(
+                    subset_ds,
+                    batch_size=getattr(datamodule, "batch_size", 1),
+                    num_workers=getattr(datamodule, "num_workers", 0),
+                    shuffle=False,
+                    collate_fn=getattr(cast(object, ds), "collate_fn", None),
+                )
+                
+                predictions = trainer.predict(model, dataloaders=subset_dl, ckpt_path=ckpt_path)
+                
+                if isinstance(predictions, list):
+                    for batch in predictions:
+                        if isinstance(batch, HeterogeneousBatch):
+                            est_activity = batch.estimates
+                            if not isinstance(est_activity, list):
+                                raise ValueError("Expected batch.estimates to be a list of tensors.")
+                                
+                            scenario_ids = cast(list[str], batch.meta["scenario_id"])
                             
-                        scenario_ids = cast(list[str], batch.meta["scenario_id"])
+                            for idx, sid in enumerate(scenario_ids):
+                                save_path = os.path.join(split_predictions_dir, f"{sid}.pt")
+                                torch.save(est_activity[idx].cpu(), save_path)
+                        else:
+                            log.warning("Batch is not a HeterogeneousBatch. Custom save logic may be needed.")
+                
+                # Cleanup memory after each chunk
+                del predictions
+                _ = gc.collect()
+                torch.cuda.empty_cache()
                         
-                        for idx, sid in enumerate(scenario_ids):
-                            save_path = os.path.join(predictions_dir, f"{sid}.pt")
-                            torch.save(est_activity[idx].cpu(), save_path)
-                    else:
-                        log.warning("Batch is not a HeterogeneousBatch. Custom save logic may be needed.")
+            log.info(f"Predictions for '{split}' successfully saved to {split_predictions_dir}.")
             
-            # Cleanup memory after each chunk
-            del predictions
-            _ = gc.collect()
-            torch.cuda.empty_cache()
-                    
-        log.info(f"Predictions successfully saved to {predictions_dir}.")
-        return predictions_dir
+        if predictions_dir is not None:
+            return predictions_dir
+        else:
+            # Fallback return for downstream tasks (like joint pipeline) to know where to find test predictions
+            return os.path.join(base_dir, "test", "predictions")
     
     log.info("Source counting pipeline completed.")
     return predictions_dir

@@ -202,7 +202,7 @@ class STFTtransform:
             stft_signal (torch.Tensor): STFT signal.
             DC_zero (bool): If True and remove_DC was False, force DC band to zero.
             Nyquist_zero (bool): If True and remove_Nyquist was False, force Nyquist band to zero.
-            num_samples (Optional[int]): Target number of samples. If not None, truncates or zero-pads to this length.
+            num_samples (int | None): Target number of samples. If not None, truncates or zero-pads to this length.
 
         Returns:
             torch.Tensor: Time-domain signal.
@@ -541,8 +541,8 @@ class Frequency_Weighting:
 
         Args:
             name (str): The name of the weighting curve. Defaults to "LTASS".
-            freqlist (Optional[list]): List of frequencies. Overrides defaults if provided.
-            weightlist (Optional[list]): List of weights in dB. Overrides defaults if provided.
+            freqlist (list | None): List of frequencies. Overrides defaults if provided.
+            weightlist (list | None): List of weights in dB. Overrides defaults if provided.
         """
         self.name = name
         self.freqs = (
@@ -573,7 +573,7 @@ class Frequency_Weighting:
         
         Args:
             transform (STFTtransform): The STFT transform defining the frequencies.
-            device (Union[torch.device, str]): Device to place the returned tensor on.
+            device (torch.device | str): Device to place the returned tensor on.
             
         Returns:
             torch.Tensor: Frequency weights in power domain.

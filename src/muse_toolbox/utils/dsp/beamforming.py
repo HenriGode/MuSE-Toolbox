@@ -26,7 +26,7 @@ def Beamformer(
         covMat2min (torch.Tensor): Covariance matrix to minimize, of shape (..., F, T, M, M).
         RTFs4constraints (torch.Tensor): Relative Transfer Functions (RTFs) for constraints, of shape (..., F, M, K).
         gains (torch.Tensor): Target gains for the constraints, of shape (..., K, 1).
-        signal (Optional[torch.Tensor]): Optional input signal to apply the beamformer to, of shape (..., F, M, T). Defaults to None.
+        signal (torch.Tensor | None): Optional input signal to apply the beamformer to, of shape (..., F, M, T). Defaults to None.
 
     Returns:
         torch.Tensor: The beamformer weights if `signal` is None, otherwise the beamformed signal.

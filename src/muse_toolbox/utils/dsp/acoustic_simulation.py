@@ -67,7 +67,7 @@ def rir2rtf(
     Args:
         rir (torch.Tensor): The Room Impulse Response.
         transform (STFTtransform): The STFT transform configuration.
-        ref_mic (Optional[int]): Index of the reference microphone. If provided, the RTF is normalized with respect to it. Defaults to None.
+        ref_mic (int | None): Index of the reference microphone. If provided, the RTF is normalized with respect to it. Defaults to None.
         signal_len (int): Length of the white noise signal to generate. Defaults to 1600000.
 
     Returns:
@@ -142,13 +142,13 @@ def simRIR_shoebox(
         room_dim (list): Dimensions of the room `[length, width, height]` in meters.
         mic_positions (np.ndarray): 2D array of microphone positions, shape `(3, num_mics)`.
         source_positions (np.ndarray): 2D array of source positions, shape `(num_sources, 3)`.
-        noise_positions (Optional[np.ndarray]): 2D array of noise positions, shape `(num_sources, 3)`. Defaults to None.
-        noise_signal (Optional[np.ndarray]): The noise signal to use. Defaults to None.
+        noise_positions (np.ndarray | None): 2D array of noise positions, shape `(num_sources, 3)`. Defaults to None.
+        noise_signal (np.ndarray | None): The noise signal to use. Defaults to None.
         rt60 (float): Target reverberation time (RT60) in seconds. Defaults to 0.3.
         fs (int): Sampling frequency in Hz. Defaults to 16000.
 
     Returns:
-        Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: 
+        Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]: 
             - If no noise is provided, returns RIRs as a tensor with shape `(num_sources, num_mics, taps)`.
             - If noise is provided, returns `(RIRs, noise_signals)`.
     """
@@ -234,20 +234,26 @@ def simRIR_shoebox_PRA(
         room_dim (list): Dimensions of the room `[length, width, height]` in meters.
         mic_positions (np.ndarray): 2D array of microphone positions, shape `(3, num_mics)`.
         source_positions (np.ndarray): 2D array of source positions, shape `(num_sources, 3)`.
-        noise_positions (Optional[np.ndarray]): (Ignored). Defaults to None.
-        noise_signal (Optional[np.ndarray]): (Ignored). Defaults to None.
-        rt60 (float): Wall absorption coefficient derived from RT60. Defaults to 0.3.
+        noise_positions (np.ndarray | None): (Ignored). Defaults to None.
+        noise_signal (np.ndarray | None): (Ignored). Defaults to None.
+        rt60 (float): RT60 to determine wall absorption coefficient using Sabines formula. Defaults to 0.3.
         fs (int): Sampling frequency in Hz. Defaults to 16000.
 
     Returns:
         torch.Tensor: RIRs as a tensor with shape `(num_sources, num_mics, taps)`.
     """
     log.debug(f"Simulating RIRs using PRA in shoebox room (dim={room_dim}, rt60={rt60}).")
-    e_absorption, max_order = pra.inverse_sabine(rt60, room_dim)
+    # 1.25 factor hack to sabines formular to better match experimental data
+    e_absorption, max_order = pra.inverse_sabine(rt60/1.25, room_dim)
 
-    # Create the shoebox-shaped room with given dimensions
+    # Create the shoebox-shaped room with Hybrid Model
     room = pra.ShoeBox(
-        room_dim, fs=fs, max_order=max_order, materials=pra.Material(e_absorption)
+        room_dim, 
+        fs=fs, 
+        max_order=max_order, # Low order for early reflections
+        materials=pra.Material(e_absorption),
+        ray_tracing=True,
+        air_absorption=True
     )
 
     # Add the circular microphone array to the room
@@ -259,6 +265,7 @@ def simRIR_shoebox_PRA(
 
     # Simulate room acoustics and compute room impulse responses (RIRs)
     room.image_source_model()
+    room.ray_tracing()
     room.compute_rir()
 
     rirs = torch.stack(
@@ -347,7 +354,7 @@ def save_rirNoise2wav(
 
     Args:
         rirs (torch.Tensor): Tensor containing the RIRs with shape `[sources, mics, taps]`.
-        noise (Optional[torch.Tensor]): The simulated noise signal.
+        noise (torch.Tensor | None): The simulated noise signal.
         roomname (str): Name of the room (e.g., "sim300ms").
         arrayname (str): Name of the array (e.g., "circ8center").
         noisename (str): Name describing the noise.
@@ -420,7 +427,7 @@ def simDiffuseNoise(
 
     Args:
         room (pra.Room): The room object from Pyroomacoustics.
-        source_positions (Optional[np.ndarray]): Array of shape `(num_sources, 3)` for source positions.
+        source_positions (np.ndarray | None): Array of shape `(num_sources, 3)` for source positions.
                                                  If None, use the room's existing source positions.
         signal (np.ndarray): The input signal to split between sources.
         signal_length (int): The length of the signal to be played by each source.

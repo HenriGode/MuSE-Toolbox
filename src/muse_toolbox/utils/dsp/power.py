@@ -18,7 +18,7 @@ def compute_power(
 
     Args:
         signal_components (torch.Tensor): The signal components of shape `(..., C, N)`.
-        vad (Optional[torch.Tensor]): The VAD mask. Defaults to None.
+        vad (torch.Tensor | None): The VAD mask. Defaults to None.
 
     Returns:
         torch.Tensor: The computed power.
@@ -48,7 +48,7 @@ def compute_rms(
 
     Args:
         signal_components (torch.Tensor): The signal components.
-        vad (Optional[torch.Tensor]): The VAD mask. Defaults to None.
+        vad (torch.Tensor | None): The VAD mask. Defaults to None.
 
     Returns:
         torch.Tensor: The computed RMS value.
@@ -67,11 +67,11 @@ def normalize_components(
 
     Args:
         signal_components (torch.Tensor): The signal to normalize.
-        vad (Optional[torch.Tensor]): Optional VAD to only consider active regions. Defaults to None.
+        vad (torch.Tensor | None): Optional VAD to only consider active regions. Defaults to None.
         norm_power (float): The target power level to normalize to. Defaults to 1e-2.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: A tuple containing the normalized signal and the normalization factors.
+        tuple[torch.Tensor, torch.Tensor]: A tuple containing the normalized signal and the normalization factors.
     """
     log.debug(f"Normalizing signal components to power {norm_power}.")
     norm_factors = norm_power / compute_rms(signal_components, vad)
@@ -87,7 +87,7 @@ def computeSNR(
     Args:
         signal (torch.Tensor): The target signal.
         noise (torch.Tensor): The noise signal.
-        vad (Optional[torch.Tensor]): Optional VAD mask to restrict computation to active regions. Defaults to None.
+        vad (torch.Tensor | None): Optional VAD mask to restrict computation to active regions. Defaults to None.
 
     Returns:
         torch.Tensor: The SNR in dB.

@@ -65,8 +65,8 @@ def main(cfg: DictConfig) -> None:
         
         sc_cfg = OmegaConf.create(cfg) # duplicate to avoid mutating global
         sc_cfg.predict = True
-        if "predictions_dir" not in sc_cfg:
-            sc_cfg.predictions_dir = "predictions/joint_run"
+        if getattr(sc_cfg, "predictions_dir", None) is None:
+            sc_cfg.predictions_dir = None
             
         predictions_dir = run_source_counting_pipeline(sc_cfg)
         

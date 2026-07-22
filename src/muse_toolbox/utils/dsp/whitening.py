@@ -54,11 +54,11 @@ def noise_whitening(
     Args:
         whiteningCovMat (torch.Tensor): The covariance matrix used for whitening (e.g. noise covariance).
         covMat (torch.Tensor): The covariance matrix to be whitened.
-        RTFvecs (Optional[torch.Tensor]): Optional Relative Transfer Functions to whiten. Defaults to None.
+        RTFvecs (torch.Tensor | None): Optional Relative Transfer Functions to whiten. Defaults to None.
         subtract_identity (bool): Whether to subtract the identity matrix from the whitened covariance matrix. Defaults to True.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
     """
     log.debug("Performing noise whitening.")
     L = regularize(
@@ -101,11 +101,11 @@ def noise_whitening_robust(
     Args:
         whiteningCovMat (torch.Tensor): The covariance matrix used for whitening.
         covMat (torch.Tensor): The covariance matrix to be whitened.
-        RTFvecs (Optional[torch.Tensor]): Optional Relative Transfer Functions to whiten. Defaults to None.
+        RTFvecs (torch.Tensor | None): Optional Relative Transfer Functions to whiten. Defaults to None.
         subtract_identity (bool): Whether to subtract the identity matrix. Defaults to True.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
     """
     log.debug("Performing robust noise whitening.")
     cholesky_failed = False
@@ -177,7 +177,7 @@ def noise_whitening_4_BOP(
         RTFvecs (torch.Tensor): Relative Transfer Functions to whiten.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
     """
     log.debug("Performing noise whitening for BOP.")
     cholesky_failed = False
@@ -234,11 +234,11 @@ def noise_whitening_noncholesky(
     Args:
         whiteningCovMat (torch.Tensor): The covariance matrix used for whitening.
         covMat (torch.Tensor): The covariance matrix to be whitened.
-        RTFvecs (Optional[torch.Tensor]): Optional Relative Transfer Functions to whiten. Defaults to None.
+        RTFvecs (torch.Tensor | None): Optional Relative Transfer Functions to whiten. Defaults to None.
         subtract_identity (bool): Whether to subtract the identity matrix. Defaults to True.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]: The whitening matrix L, the whitened covariance matrix, and the whitened RTF vectors.
     """
     log.debug("Performing non-Cholesky noise whitening.")
     L = regularize(matrixsqrth(whiteningCovMat))
