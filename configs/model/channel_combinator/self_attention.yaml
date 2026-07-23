@@ -1,0 +1,3 @@
+_target_: muse_toolbox.models.components.channel_combinator.SelfAttentionChannelCombinator
+input_feature_dim: 257
+hidden_dim: 16

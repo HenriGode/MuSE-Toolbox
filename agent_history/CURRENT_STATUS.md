@@ -107,15 +107,18 @@ If you are resuming development, here are the direct next steps needed to comple
   - Expand the practice of including contextual `README.md` files in both the `src/` subdirectories (detailing architectural data-flow) and `configs/` subdirectories (detailing hyperparameter tuning).
   - Propagate this documentation style to all other component directories (e.g., `estimators`, `data`, `metrics`), matching what was done for `feature_extractors`.
 
-- [ ] **Dataset source power rations adjust to 5dB instead fo 0**
+- [ ] **1h. Dataset source power rations adjust to 5dB instead fo 0**
   - Adjust sourc epower range to 5 db maybe instead of 0 db as it is now
 
+- [ ] **1i. Set up random channel permutation training to not learn any kind of channel position information**
+  - Add a permutation layer at the beginign of the training 
 
 - [ ] **2. Implement the Decoupled Channel Combinator Architecture**
-  - Implement the new processing flow by formally decoupling the channel condensation logic from the raw feature extraction.
-  - Create a new `channel_combinators` subdirectory in both `src/muse_toolbox/models/components/` and `configs/model/`.
-  - Refactor `StackedFeatureExtractor` to execute the late-stacking paradigm: it must route raw spatial/spectral features through their respective combinators before concatenating them.
-  - Explore implementing the Global-to-Local Cross-Attention block as an advanced combinator option.
+  - [x] Implement the new processing flow by formally decoupling the channel condensation logic from the raw feature extraction.
+  - [x] Create a new `channel_combinators` subdirectory in both `src/muse_toolbox/models/components/` and `configs/model/`.
+  - [ ] Refactor `StackedFeatureExtractor` to execute the late-stacking paradigm: it must route raw spatial/spectral features through their respective combinators before concatenating them.
+  - [] Explore and validate the Global-to-Local Cross-Attention block as an advanced combinator option and also still teh Self attention channel combinator.
+  - [integrate the new logic into the COSAD and RTF pipelines and validate it.]
 
 - [ ] **3. Real-Time Causal Training Refactoring (60s Signal Optimization)**
   - Retain the 60-second scenario generation for realistic transitions, but resolve the start-at-zero bias and memory constraints for recurrent models (e.g., GRU).
@@ -124,9 +127,6 @@ If you are resuming development, here are the direct next steps needed to comple
   - Implement **Weighted Cross-Entropy Loss** to naturally balance the over-represented 0-source class across the 100-hour dataset.
 
 - [ ] **3.b wandb logger set name dynamically (mabye even project) in config**
-
-- [ ] **4. Migrate Remaining Experiments to Hydra**
-  - Use the `configs/experiment/J1_seglen.yaml` template to port the rest of the legacy experiment scripts (like `J2_deactivation` or `PRA_ANF`) into the `configs/experiment/` directory.
 
 - [ ] **5. Setup the Testing Framework**
   - Establish a formal `pytest` suite. Write unit tests for the core feature extractors, TCN blocks, and estimators to rigorously lock down their tensor shapes and behavior.
