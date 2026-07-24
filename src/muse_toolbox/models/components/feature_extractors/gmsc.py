@@ -68,15 +68,17 @@ class GMSC_Feature_Extractor(BaseFeatureExtractor):
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            batch (torch.Tensor): STFT signal (B, F, M, T) complex.
+            batch (torch.Tensor): STFT signal (B, M, F, T) complex.
         Returns:
-            torch.Tensor: GMSC features (B, F, T).
+            torch.Tensor: GMSC features (B, 1, F, T).
         """
-        # batch: (B, F, M, T)
+        # batch: (B, M, F, T)
+        # DSP utils expect (B, F, M, T)
+        stft_mix = batch.transpose(-2, -3)
 
         Ry = regularize(
             smoothCovarianceMatrix(
-                batch.to(dtype=torch.complex128, device=batch.device),
+                stft_mix.to(dtype=torch.complex128, device=batch.device),
                 smoothing_factor=self.transform.timeConstant2smoothingFactor(
                     self.smoothing_time_constant
                 ),
@@ -84,8 +86,8 @@ class GMSC_Feature_Extractor(BaseFeatureExtractor):
             reg_factor=1e-6,
         )
 
-        # Compute GMSC: (B, F, T)
-        gmsc_val = gmsc(Ry)[..., 0, 0].to(
+        # Compute GMSC: gmsc(Ry) -> (B, F, T, 1, 1)
+        gmsc_val = gmsc(Ry)[..., 0, 0].unsqueeze(1).to(
             dtype=get_real_dtype(batch), device=batch.device
         )
 

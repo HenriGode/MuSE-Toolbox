@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Any
 from .base_channel_combinator import BaseChannelCombinator
 
 
@@ -28,6 +29,14 @@ class MLPChannelCombinator(BaseChannelCombinator):
     @property
     def is_trainable(self) -> bool:
         return True
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "max_channels": self.max_channels,
+            "hidden_dim": self.networks["2"][0].out_features,
+            "out_channels": self.out_channels,
+        }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

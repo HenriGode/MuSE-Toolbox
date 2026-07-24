@@ -1,5 +1,6 @@
 defaults:
   - feature_extractor: wgmsc
+  - channel_combinator: null
 
 _target_: muse_toolbox.models.source_counting.cosad.COSADmodule
 

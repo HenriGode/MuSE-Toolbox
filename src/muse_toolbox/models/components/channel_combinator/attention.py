@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+from typing import Any
 from .base_channel_combinator import BaseChannelCombinator
 
 
@@ -35,6 +36,13 @@ class SelfAttentionChannelCombinator(BaseChannelCombinator):
     @property
     def is_trainable(self) -> bool:
         return True
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "input_feature_dim": self.input_feature_dim,
+            "hidden_dim": self.hidden_dim,
+        }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -100,59 +108,81 @@ class CrossAttentionChannelCombinator(BaseChannelCombinator):
     Applies Global-to-Local Cross-Attention.
     
     The Query is derived from the mean across all channels (the global context).
-    The Keys and Values are derived from the individual channels.
-    This naturally outputs a representation of shape (Batch, 1, hidden_dim, F, T)
-    which is then projected to C_out.
+    The Keys are derived from the individual channels.
+    Attention scores between the global context and each channel determine the 
+    weight of that channel in the final sum.
+    
+    Expected Input Shape: (B, C, F, T)
+    Expected Output Shape: (B, 1, F, T)
     """
 
-    def __init__(self, hidden_dim: int = 16, out_channels: int = 1):
+    def __init__(self, input_feature_dim: int, hidden_dim: int = 16):
         super().__init__()
-        self.out_channels = out_channels
+        self.input_feature_dim = input_feature_dim
         self.hidden_dim = hidden_dim
         
-        self.q_proj = nn.Conv2d(1, hidden_dim, kernel_size=1)
-        self.k_proj = nn.Conv2d(1, hidden_dim, kernel_size=1)
-        self.v_proj = nn.Conv2d(1, hidden_dim, kernel_size=1)
-        
-        self.output_proj = nn.Conv2d(hidden_dim, out_channels, kernel_size=1)
+        # Project from Feature dimension (F) to Hidden dimension (D)
+        self.q_proj = nn.Linear(input_feature_dim, hidden_dim)
+        self.k_proj = nn.Linear(input_feature_dim, hidden_dim)
 
     @property
     def is_trainable(self) -> bool:
         return True
 
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "input_feature_dim": self.input_feature_dim,
+            "hidden_dim": self.hidden_dim,
+        }
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, C, F, T)
+            
+        Returns:
+            torch.Tensor: Weighted sum across channels, shape (B, 1, F, T)
+        """
         b, c, f, t = x.shape
         
+        # Permute to (B, T, C, F) to apply Linear layers over the F dimension
+        x_perm = x.permute(0, 3, 1, 2)
+        
         # Global query from mean of channels
-        q_input = x.mean(dim=1, keepdim=True)  # (B, 1, F, T)
+        # Shape: (B, T, 1, F)
+        q_input = x_perm.mean(dim=2, keepdim=True)
         
-        # Project Q
-        q = self.q_proj(q_input).view(b, 1, self.hidden_dim, f * t)
-        
-        # Project K, V for each channel independently
-        x_reshaped = x.view(b * c, 1, f, t)
-        k = self.k_proj(x_reshaped).view(b, c, self.hidden_dim, f * t)
-        v = self.v_proj(x_reshaped).view(b, c, self.hidden_dim, f * t)
-        
-        # Permute for attention
-        q = q.permute(0, 3, 1, 2)  # (B, F*T, 1, hidden_dim)
-        k = k.permute(0, 3, 2, 1)  # (B, F*T, hidden_dim, C)
+        # Project Query and Keys
+        q = self.q_proj(q_input)      # (B, T, 1, D)
+        k = self.k_proj(x_perm)       # (B, T, C, D)
         
         # Compute attention scores
-        # Shape: (B, F*T, 1, C)
-        scores = torch.matmul(q, k) / math.sqrt(self.hidden_dim)
-        attn = torch.softmax(scores, dim=-1)
+        # q: (B, T, 1, D), k^T: (B, T, D, C)
+        k_t = k.transpose(-2, -1)
         
-        v = v.permute(0, 3, 1, 2)  # (B, F*T, C, hidden_dim)
+        # scores: (B, T, 1, C)
+        scores = torch.matmul(q, k_t) / math.sqrt(self.hidden_dim)
         
-        # Apply attention
-        # Shape: (B, F*T, 1, hidden_dim)
-        attended = torch.matmul(attn, v)
+        # w_att: (B, T, 1, C) - softmax over the Keys (channels)
+        w_att = torch.softmax(scores, dim=-1)
         
-        # Reshape and remove the query sequence dimension
-        attended = attended.permute(0, 2, 3, 1).view(b, self.hidden_dim, f, t)
+        # Transpose weights to align with channels: (B, T, C, 1)
+        w = w_att.transpose(-2, -1)
         
-        # Final projection
-        out = self.output_proj(attended) # (B, C_out, F, T)
+        # Broadcast weights to all frequencies: (B, T, C, F)
+        w_broadcast = w.expand(-1, -1, -1, f)
+        
+        # Element-wise multiplication with the permuted input (B, T, C, F)
+        weighted_x = w_broadcast * x_perm
+        
+        # Sum across the channel dimension C (dim=2 in the permuted tensor)
+        # Shape: (B, T, F)
+        s_perm = weighted_x.sum(dim=2)
+        
+        # Reshape to standard output (B, 1, F, T)
+        out = s_perm.unsqueeze(1).permute(0, 1, 3, 2)
         
         return out

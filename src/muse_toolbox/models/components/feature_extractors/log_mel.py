@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections import defaultdict
 from typing import Any
 
@@ -41,6 +42,7 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
             f_max (float | None): Maximum frequency for the Mel scale.
             log_offset (float): Small constant added to avoid log(0).
         """
+        warnings.warn("Use LogMel_Feature_Extractor with a ChannelCombinator instead", DeprecationWarning)
         super().__init__(transform=transform)
         self.transform = transform
         self.mode = mode
@@ -93,20 +95,12 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
 
     @property
     def feature_dim(self) -> int:
-        if self.mode == "ref":
-            return self.n_mels
-        else:
-            raise NotImplementedError(
-                "feature_dim is M-dependent for LogMel features in 'all' mode. Use Condensed_LogMel_Feature_Extractor."
-            )
+        return self.n_mels
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
-        # batch: (B, F, M, T)
+        # batch: (B, M, F, T)
         # Compute power spectrogram
         power_spec = batch.abs().pow(2)
-
-        # Permute to (B, M, F, T) for MelScale
-        power_spec = power_spec.permute(0, 2, 1, 3)
 
         # Pad frequency dimension if DC/Nyquist were removed by STFT
         pad_bottom = 1 if self.transform.remove_Nyquist else 0
@@ -124,18 +118,22 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
         log_mel = torch.log(mel_spec + self.log_offset)
 
         if self.mode == "ref":
-            # (B, n_mels, T)
-            return log_mel[:, self.ref_channel, :, :]
+            # (B, 1, n_mels, T)
+            return log_mel[:, self.ref_channel:self.ref_channel+1, :, :]
         elif self.mode == "all":
-            # Flatten channels and mels -> (B, M*n_mels, T)
-            B, M, N_mels, T = log_mel.shape
-            return log_mel.reshape(B, M * N_mels, T)
+            # (B, M, n_mels, T)
+            return log_mel
         else:
             raise ValueError(f"Invalid mode '{self.mode}'.")
 
 
 class Condensed_LogMel_Feature_Extractor(LogMel_Feature_Extractor):
     """
+    .. deprecated:: 0.2.0
+       This class is deprecated because channel combination logic has been decoupled 
+       into the `ChannelCombinator` modules. Use `LogMel_Feature_Extractor` with a 
+       `ChannelCombinator` in the pipeline instead.
+
     Condenses the multi-channel Log-Mel features into a fixed-dimension representation
     either via a trainable CNN or simple mean over channels.
     """
@@ -254,19 +252,16 @@ class Condensed_LogMel_Feature_Extractor(LogMel_Feature_Extractor):
         return precomputedict
 
     def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
-        # batch: (B, J, T)
-        # If mode is ref, J = n_mels.
-        # If mode is all, J = M * n_mels.
+        # batch: (B, Mproc, n_mels, T)
 
         if self.mode == "ref":
-            return batch
+            return batch.squeeze(1)
 
         # mode == "all"
-        mel_flat = batch
-        B, J, T = mel_flat.shape
-        M = J // self.n_mels
+        B, M, N_mels, T = batch.shape
 
         if self.condense_method == "conv":
+            mel_flat = batch.reshape(B, M * N_mels, T)
             if str(M) not in self.models:
                 raise ValueError(
                     f"No model found for M={M} (max_channels={self.max_channels})"
@@ -274,10 +269,8 @@ class Condensed_LogMel_Feature_Extractor(LogMel_Feature_Extractor):
             return self.models[str(M)](mel_flat)
 
         elif self.condense_method == "mean":
-            # Reshape to (B, M, n_mels, T)
-            mel = mel_flat.reshape(B, M, self.n_mels, T)
             # Mean over channels
-            return torch.mean(mel, dim=1)
+            return torch.mean(batch, dim=1)
 
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")

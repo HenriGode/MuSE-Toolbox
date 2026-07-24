@@ -4,6 +4,7 @@ from typing import Any
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
+from muse_toolbox.models.components.channel_combinator.base_channel_combinator import BaseChannelCombinator
 from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 from muse_toolbox.utils import STFTtransform
 
@@ -25,6 +26,7 @@ class COSADmodule(BaseLitModel):
         transform: STFTtransform,
         feature_extractor: BaseFeatureExtractor,
         source_count_estimator: BaseSourceCountEstimator,
+        channel_combinator: BaseChannelCombinator | Any | None = None,
         batch_size: int = 1,
         loss_config: dict[str, Any] = {"CrossEntropy": None},
         optimizer_config: dict[str, Any] | None = None,
@@ -42,6 +44,7 @@ class COSADmodule(BaseLitModel):
             transform (utilities.STFTtransform): The STFT configuration for transforming audio signals.
             feature_extractor (BaseFeatureExtractor): Module responsible for extracting features from the STFT.
             source_count_estimator (BaseSourceCountEstimator): Module responsible for predicting source activity.
+            channel_combinator (Optional[BaseChannelCombinator]): Module for condensing channel features.
             batch_size (int): Batch size for processing.
             loss_config (dict[str, Any]): Configuration for the loss function.
             optimizer_config (Optional[dict[str, Any]]): Configuration for the optimizer.
@@ -56,9 +59,21 @@ class COSADmodule(BaseLitModel):
         if isinstance(feature_extractor, functools.partial):
             feature_extractor = feature_extractor(transform=transform)
             
+        if isinstance(channel_combinator, functools.partial):
+            channel_combinator = channel_combinator(
+                input_feature_dim=feature_extractor.feature_dim
+            )
+            
+        estimator_input_dim = feature_extractor.feature_dim
+        # If a channel combinator is present, it handles channel condensation but preserves feature dim
+        # (or provides an explicit out_feature_dim if it changes it).
+        if channel_combinator is not None:
+            if hasattr(channel_combinator, 'out_feature_dim'):
+                estimator_input_dim = channel_combinator.out_feature_dim
+
         if isinstance(source_count_estimator, functools.partial):
             source_count_estimator = source_count_estimator(
-                input_dim=feature_extractor.feature_dim,
+                input_dim=estimator_input_dim,
                 transform=transform
             )
             
@@ -80,6 +95,7 @@ class COSADmodule(BaseLitModel):
 
         # Assign injected dependencies
         self.feature_extractor = feature_extractor
+        self.channel_combinator = channel_combinator
         self.source_count_estimator = source_count_estimator
 
         self.num_params = self.count_parameters()
@@ -87,11 +103,13 @@ class COSADmodule(BaseLitModel):
         # Save hyperparameters, but ignore the complex objects (modules)
         # as they are part of the model structure, not just config params.
         self.save_hyperparameters(
-            ignore=["feature_extractor", "source_count_estimator", "transform"]
+            ignore=["feature_extractor", "source_count_estimator", "channel_combinator", "transform"]
         )
 
         # Manually save the configs of the injected dependencies
         self.hparams["feature_config"] = self.feature_extractor.get_config()
+        if self.channel_combinator is not None and hasattr(self.channel_combinator, "get_config"):
+            self.hparams["combinator_config"] = self.channel_combinator.get_config()
         self.hparams["estimator_config"] = self.source_count_estimator.get_config()
         self.hparams["transform_config"] = self.transform.get_config()
 
@@ -117,6 +135,14 @@ class COSADmodule(BaseLitModel):
             log.info(
                 f"{indent}  Feature Extractor: {self.feature_extractor.__class__.__name__}"
             )
+            
+        if self.channel_combinator is not None:
+            if hasattr(self.channel_combinator, "_verbose_parameters"):
+                self.channel_combinator._verbose_parameters(indent=indent + "  ")
+            else:
+                log.info(
+                    f"{indent}  Channel Combinator: {self.channel_combinator.__class__.__name__}"
+                )
 
         if hasattr(self.source_count_estimator, "_verbose_parameters"):
             self.source_count_estimator._verbose_parameters(indent=indent + "  ")
@@ -143,8 +169,12 @@ class COSADmodule(BaseLitModel):
 
         # 1. Feature Extraction
         batch.apply_feature_extractor(self.feature_extractor)
+        
+        # 2. Channel Combination (Optional)
+        if self.channel_combinator is not None:
+            batch.apply_channel_combinator(self.channel_combinator)
 
-        # 2. Detection (Source Count Estimation)
+        # 3. Detection (Source Count Estimation)
         # The estimator takes the features and estimates source activity.
         batch.apply_source_count_estimator(self.source_count_estimator)
         return batch

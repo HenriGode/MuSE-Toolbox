@@ -138,8 +138,8 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
         """
 
         # Step 1: Transform the time-domain signal to the STFT domain.
-        # STFTtransform usually handles (B, M, N) -> (B, F, T, M) or similar
-        stft_mix = batch
+        # DSP utils expect (B, F, M, T)
+        stft_mix = batch.transpose(-2, -3)
 
         # Step 2: Calculate the narrowband coherence and whitened covariance.
         # The internal methods are already vectorized for batch processing.
@@ -147,29 +147,25 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
             self._white_gmsc_narrowband(stft_mix)
         )
 
-        # Prepare Output
+        # Prepare Output -> (B, Mproc, Fproc, T)
         if self.wideband_features:
-            # Output shape: (B, 1, T)
-            wgmsc_wideband = self._combine_frequencies(wgmsc_narrowband, Rw)
-            fwd = wgmsc_wideband[..., 0, 0]  # (B, 1, T)
+            wgmsc_wideband = self._combine_frequencies(wgmsc_narrowband, Rw) # (B, 1, T, 1, 1)
+            fwd = wgmsc_wideband[..., 0, 0].unsqueeze(2)  # (B, 1, T) -> (B, 1, 1, T)
             if self.rev_features:
                 wgmsc_wideband_rev = self._combine_frequencies(
                     wgmsc_narrowband_rev, Rw_rev
                 )
-                rev = wgmsc_wideband_rev[..., 0, 0]  # (B, 1, T)
-                output = torch.cat([fwd, rev], dim=1)  # (B, 2, T)
+                rev = wgmsc_wideband_rev[..., 0, 0].unsqueeze(2)  # (B, 1, T) -> (B, 1, 1, T)
+                output = torch.cat([fwd, rev], dim=1)  # (B, 2, 1, T)
             else:
-                output = fwd
+                output = fwd  # (B, 1, 1, T)
         else:
-            # Output shape: (B, F, T)
-            fwd = wgmsc_narrowband[..., 0, 0]  # (B, F, T)
+            fwd = wgmsc_narrowband[..., 0, 0].unsqueeze(1)  # (B, F, T) -> (B, 1, F, T)
             if self.rev_features:
-                rev = wgmsc_narrowband_rev[..., 0, 0]  # (B, F, T)
-                output = torch.cat([fwd, rev], dim=-2)  # (B, 2F, T)
+                rev = wgmsc_narrowband_rev[..., 0, 0].unsqueeze(1)  # (B, 1, F, T)
+                output = torch.cat([fwd, rev], dim=1)  # (B, 2, F, T)
             else:
-                output = fwd
-
-
+                output = fwd  # (B, 1, F, T)
 
         return output
 
@@ -336,7 +332,7 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
         """
         # Use the trace of the whitened covariance matrix (i.e., power) as weights.
         weights = trace(Rw).real
-        # Compute the weighted mean of the narrowband coherence across the frequency dimension.
+        # Compute the weighted mean of the narrowband coherence across the frequency dimension (dim -4).
         return wmean(
             wgmsc_narrowband,
             dims=-4,  # Frequency dimension

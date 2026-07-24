@@ -125,21 +125,40 @@ class BaseFeatureExtractor(nn.Module, ABC):
         """
         Dispatch method to process input based on its type.
         """
+        is_unbatched = False
+        if isinstance(batch, torch.Tensor):
+            if input_type == "raw_audio" and batch.dim() == 2:
+                is_unbatched = True
+            elif input_type == "stft" and batch.dim() == 3:
+                is_unbatched = True
+            elif input_type == "features" and batch.dim() == 2:
+                is_unbatched = True
+
+            if is_unbatched:
+                batch = batch.unsqueeze(0)
+
         if input_type == "raw_audio" and isinstance(batch, torch.Tensor):
-            return self.forward_raw_audio(batch)
+            out = self.forward_raw_audio(batch)
         elif (
             input_type == "stft" and self.uses_stft and isinstance(batch, torch.Tensor)
         ):
-            return self.forward_stft(batch)
+            # STFT natively has shape (..., F, M, T). Transpose to (..., M, F, T).
+            batch = batch.transpose(-2, -3)
+            out = self.forward_stft(batch)
         elif input_type == "features" and isinstance(batch, torch.Tensor):
-            return self.forward_precomputed_features(batch)
+            out = self.forward_precomputed_features(batch)
         elif input_type == "features" and isinstance(batch, dict):
-            return self.forward_precomputed_features_dict(batch)
+            out = self.forward_precomputed_features_dict(batch)
         else:
             raise ValueError(
                 f"Invalid input_type '{input_type}' for feature extractor"
                 f" '{self.__class__.__name__}'."
             )
+            
+        if is_unbatched and isinstance(out, torch.Tensor):
+            out = out.squeeze(0)
+            
+        return out
 
     def forward_raw_audio(self, batch: torch.Tensor) -> torch.Tensor:
         """Compute features from raw audio tensor (B, M, N)."""
@@ -149,6 +168,8 @@ class BaseFeatureExtractor(nn.Module, ABC):
             )
         if isinstance(self.transform, STFTtransform):
             stft_audio = self.transform.encode(batch)
+            # STFT natively has shape (..., F, M, T). Transpose to (..., M, F, T).
+            stft_audio = stft_audio.transpose(-2, -3)
             return self.forward_stft(stft_audio)
         else:
             raise NotImplementedError(

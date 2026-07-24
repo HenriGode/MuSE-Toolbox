@@ -1,4 +1,5 @@
 import torch
+from typing import Any
 from .base_channel_combinator import BaseChannelCombinator
 from muse_toolbox.models.components.nn_blocks import TACBlock
 
@@ -14,6 +15,8 @@ class TACChannelCombinator(BaseChannelCombinator):
 
     def __init__(self, input_feature_dim: int, hidden_dim: int = 32):
         super().__init__()
+        self.input_feature_dim = input_feature_dim
+        self.hidden_dim = hidden_dim
         # Initialize the TAC block
         # If input_feature_dim is -1, it will lazily initialize its layers 
         # on the first forward pass.
@@ -22,6 +25,13 @@ class TACChannelCombinator(BaseChannelCombinator):
     @property
     def is_trainable(self) -> bool:
         return True
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "input_feature_dim": self.input_feature_dim,
+            "hidden_dim": self.hidden_dim,
+        }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

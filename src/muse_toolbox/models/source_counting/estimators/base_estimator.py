@@ -42,12 +42,21 @@ class BaseSourceCountEstimator(nn.Module, ABC):
         Processes the input features and returns the estimated source activity logits.
 
         Args:
-            features (torch.Tensor): Input features of shape (B, J, T), where
+            features (torch.Tensor): Input features of shape (B, 1, J, T) or (B, J, T), where
                 B = batch size, J = feature dimension, T = time frames.
         Returns:
             torch.Tensor: Source activity logits of shape (B, T, C), where
                 C = number of classes (max_sources + 1).
         """
+        if features.dim() == 4:
+            if features.size(1) != 1:
+                raise ValueError(
+                    f"Source count estimators expect exactly 1 channel, but got {features.size(1)} channels. "
+                    "Make sure to use a ChannelCombinator to reduce the channel dimension to 1."
+                )
+            # Squeeze the channel dimension: (B, 1, F, T) -> (B, F, T)
+            features = features.squeeze(1)
+            
         return self.forward_tensor(features)
 
 

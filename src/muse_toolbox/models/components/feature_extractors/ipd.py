@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections import defaultdict
 from typing import Any
 
@@ -76,28 +77,28 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
         )
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
-        # batch: (B, F, M, T)
+        # batch: (B, M, F, T)
         phase = torch.angle(batch)
-        B, F, M, T = phase.shape
+        B, M, F, T = phase.shape
 
         if self.mode == "ref":
-            ref_phase = phase[:, :, self.ref_channel : self.ref_channel + 1, :]
+            ref_phase = phase[:, self.ref_channel : self.ref_channel + 1, :, :]
             diff = phase - ref_phase
             # Remove the ref channel
             indices = [i for i in range(M) if i != self.ref_channel]
             if not indices:
-                return torch.empty(B, F, 0, T, device=phase.device)
-            diff = diff[:, :, indices, :]
+                return torch.empty(B, 0, F, T, device=phase.device)
+            diff = diff[:, indices, :, :]
 
         elif self.mode == "all":
             # Compute all pairs (i, j) where i < j
             diffs = []
             for i in range(M):
                 for j in range(i + 1, M):
-                    diffs.append(phase[:, :, i : i + 1, :] - phase[:, :, j : j + 1, :])
+                    diffs.append(phase[:, i : i + 1, :, :] - phase[:, j : j + 1, :, :])
             if not diffs:
                 return torch.empty(B, 0, F, T, device=phase.device)
-            diff = torch.cat(diffs, dim=-2)
+            diff = torch.cat(diffs, dim=1)
 
         else:
             raise ValueError(f"Invalid mode '{self.mode}'.")
@@ -105,10 +106,7 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
         # Wrap to [-pi, pi]
         ipd = torch.remainder(diff + torch.pi, 2 * torch.pi) - torch.pi
 
-        # Flatten channels and freq -> (B, J, T)
-        B, F, P, T = ipd.shape
-        J = P * F
-        return ipd.swapaxes(-2, -3).reshape(B, J, T)
+        return ipd
 
 
 class CSIPD_Feature_Extractor(IPD_Feature_Extractor):
@@ -135,22 +133,26 @@ class CSIPD_Feature_Extractor(IPD_Feature_Extractor):
         )
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
-        # 1. Get standard IPD features: (B, J, T)
-        ipd_flat = super().forward_stft(batch)
-        B, J, T = ipd_flat.shape
+        # 1. Get standard IPD features: (B, P, F, T)
+        ipd = super().forward_stft(batch)
+        B, P, F, T = ipd.shape
 
-        c = torch.cos(ipd_flat)
-        s = torch.sin(ipd_flat)
+        c = torch.cos(ipd)
+        s = torch.sin(ipd)
 
-        # Interleave cos and sin: (B, J, 2, T)
-        csipd = torch.stack((c, s), dim=2)
+        # Interleave cos and sin along frequency dim: (B, P, 2F, T)
+        csipd = torch.stack((c, s), dim=3).reshape(B, P, 2 * F, T)
 
-        # Flatten to (B, 2*J, T)
-        return csipd.reshape(B, J * 2, T)
+        return csipd
 
 
 class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
     """
+    .. deprecated:: 0.2.0
+       This class is deprecated because channel combination logic has been decoupled 
+       into the `ChannelCombinator` modules. Use `IPD_Feature_Extractor` with a 
+       `ChannelCombinator` in the pipeline instead.
+
     Condenses the M-dependent IPD features into a fixed-dimension representation
     either via a trainable CNN or circular mean.
     """
@@ -178,7 +180,9 @@ class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
             kernel_size (int): Kernel size for CNN.
             dropout (float): Dropout probability.
         """
-        # We pass num_channels=None because feature_dim is now fixed (F)
+        warnings.warn("Use IPD_Feature_Extractor with a ChannelCombinator instead", DeprecationWarning)
+        
+        # Determine the number of condensed channels=None because feature_dim is now fixed (F)
         super().__init__(transform=transform, mode=mode, ref_channel=ref_channel)
         self.condense_method = condense_method
         self.max_channels = max_channels
@@ -274,35 +278,30 @@ class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
         return precomputedict
 
     def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
-        # batch: (B, J, T)
-        ipd_flat = batch
-        B, J, T = ipd_flat.shape
-
-        # Infer M from J
-        P = J // self.freq_dim
-        if self.mode == "ref":
-            M = P + 1
-        else:
-            # P = M*(M-1)/2 => M^2 - M - 2P = 0
-            M = int((1 + (1 + 8 * P) ** 0.5) / 2)
+        # batch: (B, P, F, T)
+        B, P, F_dim, T = batch.shape
 
         if self.condense_method == "conv":
+            if self.mode == "ref":
+                M = P + 1
+            else:
+                M = int((1 + (1 + 8 * P) ** 0.5) / 2)
+
             if str(M) not in self.models:
                 raise ValueError(
                     f"No model found for M={M} (max_channels={self.max_channels})"
                 )
+            
+            ipd_flat = batch.reshape(B, P * F_dim, T)
             return self.models[str(M)](ipd_flat)
 
         elif self.condense_method == "circular_mean":
-            # Reshape to (B, F, P, T) to average over P
-            ipd = ipd_flat.reshape(B, self.freq_dim, P, T)
-
-            # Circular Mean: atan2( sum(sin), sum(cos) )
-            sin_sum = torch.sum(torch.sin(ipd), dim=-2)
-            cos_sum = torch.sum(torch.cos(ipd), dim=-2)
+            # Circular Mean over pairs P: atan2( sum(sin), sum(cos) )
+            sin_sum = torch.sum(torch.sin(batch), dim=1)
+            cos_sum = torch.sum(torch.cos(batch), dim=1)
             mean_ipd = torch.atan2(sin_sum, cos_sum)  # (B, F, T)
 
-            return mean_ipd
+            return mean_ipd.unsqueeze(1)  # (B, 1, F, T)
 
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")
@@ -315,6 +314,11 @@ class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
 
 class Condensed_CSIPD_Feature_Extractor(CSIPD_Feature_Extractor):
     """
+    .. deprecated:: 0.2.0
+       This class is deprecated because channel combination logic has been decoupled 
+       into the `ChannelCombinator` modules. Use `CSIPD_Feature_Extractor` with a 
+       `ChannelCombinator` in the pipeline instead.
+
     Condenses the M-dependent CSIPD features into a fixed-dimension representation
     either via a trainable CNN or vector mean.
     """
@@ -342,6 +346,7 @@ class Condensed_CSIPD_Feature_Extractor(CSIPD_Feature_Extractor):
             kernel_size (int): Kernel size for CNN.
             dropout (float): Dropout probability.
         """
+        warnings.warn("Use CSIPD_Feature_Extractor with a ChannelCombinator instead", DeprecationWarning)
         super().__init__(transform=transform, mode=mode, ref_channel=ref_channel)
         self.condense_method = condense_method
         self.max_channels = max_channels
@@ -436,31 +441,31 @@ class Condensed_CSIPD_Feature_Extractor(CSIPD_Feature_Extractor):
         return precomputedict
 
     def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
-        # batch: (B, 2*P*F, T)
-        csipd_flat = batch
-        B, PF2, T = csipd_flat.shape
-
-        # Infer M
-        P = (PF2 // 2) // self.freq_dim
-        if self.mode == "ref":
-            M = P + 1
-        else:
-            M = int((1 + (1 + 8 * P) ** 0.5) / 2)
+        # batch: (B, P, 2*F, T)
+        B, P, F2, T = batch.shape
 
         if self.condense_method == "conv":
+            # Infer M
+            if self.mode == "ref":
+                M = P + 1
+            else:
+                M = int((1 + (1 + 8 * P) ** 0.5) / 2)
+
             if str(M) not in self.models:
                 raise ValueError(f"No model found for M={M}")
+                
+            csipd_flat = batch.reshape(B, P * F2, T)
             return self.models[str(M)](csipd_flat)
 
         elif self.condense_method == "vector_mean":
             # Reshape to (B, P, F, 2, T)
-            csipd_unflat = csipd_flat.reshape(B, P, self.freq_dim, 2, T)
+            csipd_unflat = batch.reshape(B, P, self.freq_dim, 2, T)
 
             # Average over P (dim 1) -> (B, F, 2, T)
             mean_csipd = torch.mean(csipd_unflat, dim=1)
 
-            # Flatten F and 2 -> (B, 2*F, T)
-            return mean_csipd.reshape(B, self.freq_dim * 2, T)
+            # Flatten F and 2 -> (B, 2*F, T) -> add Mproc -> (B, 1, 2F, T)
+            return mean_csipd.reshape(B, 1, self.freq_dim * 2, T)
 
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")

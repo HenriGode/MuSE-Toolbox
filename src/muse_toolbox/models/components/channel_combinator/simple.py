@@ -1,4 +1,5 @@
 import torch
+from typing import Any
 from .base_channel_combinator import BaseChannelCombinator
 
 
@@ -17,6 +18,9 @@ class IdentityChannelCombinator(BaseChannelCombinator):
     @property
     def is_trainable(self) -> bool:
         return False
+
+    def get_config(self) -> dict[str, Any]:
+        return {"name": self.__class__.__name__}
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -40,6 +44,9 @@ class AverageChannelCombinator(BaseChannelCombinator):
     def is_trainable(self) -> bool:
         return False
 
+    def get_config(self) -> dict[str, Any]:
+        return {"name": self.__class__.__name__}
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Averages across the channel dimension (dim=1) while keeping the dimension.
@@ -62,6 +69,12 @@ class SelectChannelCombinator(BaseChannelCombinator):
     @property
     def is_trainable(self) -> bool:
         return False
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "ref_channel": self.ref_channel,
+        }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

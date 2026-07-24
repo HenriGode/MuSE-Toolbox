@@ -139,6 +139,12 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
         outputs = []
         for extractor in self._extractors:
             outputs.append(extractor.forward_raw_audio(batch))
+        
+        # Check Mproc match
+        m_procs = [out.shape[-3] for out in outputs]
+        if len(set(m_procs)) > 1:
+            raise ValueError(f"Cannot stack features with different Mproc dimensions: {m_procs}. Features must have matching Mproc to be concatenated along Fproc.")
+
         return torch.cat(outputs, dim=-2)
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
@@ -153,6 +159,11 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
                     f"Extractor {extractor.__class__.__name__} does not support STFT input, "
                     "but StackedFeatureExtractor was called with input_type='stft'."
                 )
+        
+        m_procs = [out.shape[-3] for out in outputs]
+        if len(set(m_procs)) > 1:
+            raise ValueError(f"Cannot stack features with different Mproc dimensions: {m_procs}. Features must have matching Mproc to be concatenated along Fproc.")
+
         return torch.cat(outputs, dim=-2)
 
     def forward_precomputed_features_dict(
@@ -188,5 +199,9 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
                     raise ValueError(
                         f"No precomputed data found for extractor {i} in batch keys: {list(batch.keys())}"
                     )
+
+        m_procs = [out.shape[-3] for out in outputs]
+        if len(set(m_procs)) > 1:
+            raise ValueError(f"Cannot stack features with different Mproc dimensions: {m_procs}. Features must have matching Mproc to be concatenated along Fproc.")
 
         return torch.cat(outputs, dim=-2)

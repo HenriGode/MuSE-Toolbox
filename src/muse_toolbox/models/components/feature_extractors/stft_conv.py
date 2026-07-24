@@ -46,7 +46,7 @@ class STFT_Conv_Feature_Encoder(BaseFeatureExtractor):
         self.max_channels = max_channels
 
         # Input dim per microphone is F (freq bins)
-        self.freq_dim = self.transform.nfft // 2 + 1
+        self.freq_dim = self.transform.num_freq_bins
 
         # Create a dictionary of models, one for each possible channel count M
         # Keys must be strings for nn.ModuleDict
@@ -107,12 +107,12 @@ class STFT_Conv_Feature_Encoder(BaseFeatureExtractor):
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            stft: (B, F, M, T) Complex tensor
+            batch: (B, M, F, T) Complex tensor
         Returns:
-            features: (B, J, T)
+            features: (B, 1, J, T)
         """
-        # batch is complex (B, F, M, T)
-        B, F, M, T = batch.shape
+        # batch is complex (B, M, F, T)
+        B, M, F, T = batch.shape
 
         # 2. Check if we have a model for this M
         if str(M) not in self.models:
@@ -134,7 +134,7 @@ class STFT_Conv_Feature_Encoder(BaseFeatureExtractor):
 
         # Concatenate along the frequency dimension (dim=2)
         # Result: (B, M, 2*F, T)
-        x_complex = torch.cat([real, imag], dim=-2)
+        x_complex = torch.cat([real, imag], dim=2)
 
         # 4. Flatten M and F dimensions -> (B, M * 2*F, T)
         x = x_complex.reshape(B, M * 2 * F, T)
@@ -145,4 +145,5 @@ class STFT_Conv_Feature_Encoder(BaseFeatureExtractor):
         # 6. Forward pass (Causal Conv) -> (B, J, T)
         out = model(x)
 
-        return out
+        # 7. Reshape to (B, Mproc, Fproc, T) -> (B, 1, J, T)
+        return out.unsqueeze(1)

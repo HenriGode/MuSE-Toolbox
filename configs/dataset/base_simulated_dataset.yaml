@@ -20,7 +20,7 @@ generation_config:
   snrs: 
     min: 5.0
     max: 20.0
-  source_power_range: 0.0
+  source_power_range: 10.0
   time_between_events:
     min: 1.0
     max: 10.0

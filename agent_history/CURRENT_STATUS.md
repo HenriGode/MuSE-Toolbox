@@ -95,43 +95,49 @@ If you are resuming development, here are the direct next steps needed to comple
 - [x] **1d. Output Directory Architecture Refactor**
   - *Completed:* The `.hydra`, `wandb`, `results`, `predictions`, and `audio` all log correctly inside the new `outputs/<task>/<experiment>/<timestamp>/<split>/` directory structure. Refactored Callbacks and Hydra config logging rules to achieve this.
 
-- [ ] **1e. HeterogeneousBatch Architectural Refactor**
-  - Strip all DSP/Transform logic out of `HeterogeneousBatch` and move it directly into the PyTorch Lightning module `forward()` passes, ensuring it acts solely as a dumb data container. Detailed in `agent_history/HETEROGENEOUS_BATCH_REFACTOR.md`.
 
-- [ ] **1f. Algorithmic Latency & Real-Time Causal STFT Redesign**
-  - Transition STFT parameters to `center=False` to eliminate artificial future lookahead.
-  - Refactor Ground Truth framewise alignment to anchor on the end of the STFT window.
-  - Rewrite `CausalityCheckCallback` into `AlgorithmicLatencyCallback` with static perturbation-based testing. Detailed in `agent_history/algorithmic_latency_design.md`.
 
-- [ ] **1g. Directory-level README Documentation**
-  - Expand the practice of including contextual `README.md` files in both the `src/` subdirectories (detailing architectural data-flow) and `configs/` subdirectories (detailing hyperparameter tuning).
-  - Propagate this documentation style to all other component directories (e.g., `estimators`, `data`, `metrics`), matching what was done for `feature_extractors`.
+- [x] **1g. wandb logger set name dynamically (mabye even project) in config**
 
-- [ ] **1h. Dataset source power rations adjust to 5dB instead fo 0**
+- [x] **1h. Dataset source power rations adjust to 5dB instead fo 0**
   - Adjust sourc epower range to 5 db maybe instead of 0 db as it is now
 
 - [ ] **1i. Set up random channel permutation training to not learn any kind of channel position information**
   - Add a permutation layer at the beginign of the training 
 
+- [ ] **1j. add the wandb run name to the timestamp level of the outputs dir strucutre**
+
+
 - [ ] **2. Implement the Decoupled Channel Combinator Architecture**
   - [x] Implement the new processing flow by formally decoupling the channel condensation logic from the raw feature extraction.
   - [x] Create a new `channel_combinators` subdirectory in both `src/muse_toolbox/models/components/` and `configs/model/`.
   - [ ] Refactor `StackedFeatureExtractor` to execute the late-stacking paradigm: it must route raw spatial/spectral features through their respective combinators before concatenating them.
-  - [] Explore and validate the Global-to-Local Cross-Attention block as an advanced combinator option and also still teh Self attention channel combinator.
-  - [integrate the new logic into the COSAD and RTF pipelines and validate it.]
+  - [x] Explore and validate the Global-to-Local Cross-Attention block as an advanced combinator option and also still teh Self attention channel combinator.
+  - [x] integrate the new logic into the COSAD and RTF pipelines and validate it.
 
-- [ ] **3. Real-Time Causal Training Refactoring (60s Signal Optimization)**
+
+- [ ] **3. Directory-level README Documentation**
+  - Expand the practice of including contextual `README.md` files in both the `src/` subdirectories (detailing architectural data-flow) and `configs/` subdirectories (detailing hyperparameter tuning).
+  - Propagate this documentation style to all other component directories (e.g., `estimators`, `data`, `metrics`), matching what was done for `feature_extractors`.
+
+- [ ] **4. Algorithmic Latency & Real-Time Causal STFT Redesign**
+  - Transition STFT parameters to `center=False` to eliminate artificial future lookahead.
+  - Refactor Ground Truth framewise alignment to anchor on the end of the STFT window.
+  - Rewrite `CausalityCheckCallback` into `AlgorithmicLatencyCallback` with static perturbation-based testing. Detailed in `agent_history/algorithmic_latency_design.md`.
+
+- [ ] **5. HeterogeneousBatch Architectural Refactor**
+  - Strip all DSP/Transform logic out of `HeterogeneousBatch` and move it directly into the PyTorch Lightning module `forward()` passes, ensuring it acts solely as a dumb data container. Detailed in `agent_history/HETEROGENEOUS_BATCH_REFACTOR.md`.
+
+- [ ] **5b. Real-Time Causal Training Refactoring (60s Signal Optimization)**
   - Retain the 60-second scenario generation for realistic transitions, but resolve the start-at-zero bias and memory constraints for recurrent models (e.g., GRU).
   - Implement **Stateful Truncated BPTT (TBPTT)** to train on shorter chunks (e.g., 5s) while detaching and passing the hidden state between chunks. ( I guess i am not doing this!, maybe training on short chunks but without plassing the hidden state.)
   - Implement a **Burn-in Loss Masking** period (e.g., ignoring loss for the first 1-2 seconds) to allow the GRU hidden state and GMSC smoothing buffers to initialize properly. (this seems for me the most interesting and promising. to determine the burn in time we would need to condier parameters liek smoothing constant and so on but much more the bias behavior of the class imbalance at the beginning of the signals due to the activation pattern generation.)
   - Implement **Weighted Cross-Entropy Loss** to naturally balance the over-represented 0-source class across the 100-hour dataset.
 
-- [ ] **3.b wandb logger set name dynamically (mabye even project) in config**
-
-- [ ] **5. Setup the Testing Framework**
+- [ ] **6. Setup the Testing Framework**
   - Establish a formal `pytest` suite. Write unit tests for the core feature extractors, TCN blocks, and estimators to rigorously lock down their tensor shapes and behavior.
 
-- [ ] **6. Setup the AMI Dataset**
+- [ ] **7. Setup the AMI Dataset**
   - Introduce the full AMI corpus integration inside the `data/` directory. Build out the `Database`, `Dataset`, and `DataModule` wrappers.
 
 

@@ -1,6 +1,6 @@
 _target_: muse_toolbox.models.components.feature_extractors.LogMel_Feature_Extractor
 _partial_: true
-mode: "ref"
+mode: "all"
 ref_channel: 0
 n_mels: 80
 f_min: 0.0

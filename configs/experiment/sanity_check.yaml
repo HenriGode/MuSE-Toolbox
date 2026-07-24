@@ -4,6 +4,9 @@ defaults:
   - override /model: cosad
   - override /dataset: pra_anf_circ_8ch # brudex
 
+  - override /model/feature_extractor: log_mel
+  - override /model/channel_combinator: self_attention
+
 trainer:
   max_epochs: 2
   limit_train_batches: 2

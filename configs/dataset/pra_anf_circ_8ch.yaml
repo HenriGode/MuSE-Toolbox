@@ -4,7 +4,7 @@
 defaults:
   - base_pra_anf
 
-id: "J3_PRAANF_circ_8ch_20cm"
+id: "J3_PRAANF_circ_8ch_20cm_SIR10dB"
 
 pra_anf_config:
   microphone_arrays:

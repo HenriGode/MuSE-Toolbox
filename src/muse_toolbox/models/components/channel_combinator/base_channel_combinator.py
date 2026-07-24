@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 import torch
 import torch.nn as nn
 
@@ -35,6 +36,13 @@ class BaseChannelCombinator(nn.Module, ABC):
     def is_trainable(self) -> bool:
         """
         Indicates whether this channel combinator contains learnable parameters.
+        """
+        pass
+
+    @abstractmethod
+    def get_config(self) -> dict[str, Any]:
+        """
+        Returns the configuration dictionary used to initialize this channel combinator.
         """
         pass
 
