@@ -36,6 +36,7 @@ class COSADmodule(BaseLitModel):
         metrics_test: dict[str, Any] | None = None,
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
+        permute_channels: bool = True,
     ):
         """
         Initializes the COSADmodule.
@@ -54,6 +55,7 @@ class COSADmodule(BaseLitModel):
             metrics_test (Optional[dict[str, Any]]): Metrics to track during testing.
             compute_complexity_metrics (bool): Whether to profile computational complexity.
             check_causality (bool): Whether to enforce causality checks on the model.
+            permute_channels (bool): If True, randomly permutes channels during training.
         """
         import functools
         if isinstance(feature_extractor, functools.partial):
@@ -97,6 +99,7 @@ class COSADmodule(BaseLitModel):
         self.feature_extractor = feature_extractor
         self.channel_combinator = channel_combinator
         self.source_count_estimator = source_count_estimator
+        self.permute_channels = permute_channels
 
         self.num_params = self.count_parameters()
 
@@ -166,6 +169,10 @@ class COSADmodule(BaseLitModel):
             HeterogeneousBatch: The processed batch, now populated with source 
                 activity estimates.
         """
+
+        # 0. Data Augmentation
+        if self.training and self.permute_channels:
+            batch.randomly_permute_channels()
 
         # 1. Feature Extraction
         batch.apply_feature_extractor(self.feature_extractor)

@@ -102,10 +102,10 @@ If you are resuming development, here are the direct next steps needed to comple
 - [x] **1h. Dataset source power rations adjust to 5dB instead fo 0**
   - Adjust sourc epower range to 5 db maybe instead of 0 db as it is now
 
-- [ ] **1i. Set up random channel permutation training to not learn any kind of channel position information**
-  - Add a permutation layer at the beginign of the training 
+- [x] **1i. Set up random channel permutation training to not learn any kind of channel position information**
+  - Added a permutation layer at the beginning of the training directly in HeterogeneousBatch
 
-- [ ] **1j. add the wandb run name to the timestamp level of the outputs dir strucutre**
+- [x] **1j. add the wandb run name to the timestamp level of the outputs dir strucutre**
 
 
 - [ ] **2. Implement the Decoupled Channel Combinator Architecture**

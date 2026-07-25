@@ -56,3 +56,4 @@ metrics_test:
 
 compute_complexity_metrics: False
 check_causality: False
+permute_channels: False
