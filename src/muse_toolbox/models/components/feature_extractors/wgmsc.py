@@ -163,7 +163,7 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
             fwd = wgmsc_narrowband[..., 0, 0].unsqueeze(1)  # (B, F, T) -> (B, 1, F, T)
             if self.rev_features:
                 rev = wgmsc_narrowband_rev[..., 0, 0].unsqueeze(1)  # (B, 1, F, T)
-                output = torch.cat([fwd, rev], dim=1)  # (B, 2, F, T)
+                output = torch.cat([fwd, rev], dim=-2)  # (B, 1, 2*F, T)
             else:
                 output = fwd  # (B, 1, F, T)
 

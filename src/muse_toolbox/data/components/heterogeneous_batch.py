@@ -218,7 +218,8 @@ class HeterogeneousBatch:
         self, combinator: "BaseChannelCombinator"
     ) -> "HeterogeneousBatch":
         """
-        Pads features (if not already padded) and applies the channel combinator.
+        Applies the channel combinator individually to each feature item (since channel counts may differ),
+        then pads the resulting features to the maximum length in the batch.
         """
         if self.status != "features":
             raise ValueError(
@@ -228,11 +229,14 @@ class HeterogeneousBatch:
         if not self.processed_features:
             raise ValueError("Batch is empty, no features to process.")
 
-        self._pad_features()
-        assert self.padded_features is not None, "Padding failed to produce features"
-
-        # Apply Combinator on the padded tensor
-        self.padded_features = combinator.forward(self.padded_features)
+        # Apply Combinator on each individual item
+        for i, feat in enumerate(self.processed_features):
+            # Add a fake batch dimension: feat is (C, F, T) -> (1, C, F, T)
+            feat_batched = feat.unsqueeze(0)
+            # Combinator outputs (1, C_out, F, T)
+            feat_comb = combinator.forward(feat_batched)
+            # Remove batch dimension and store: (C_out, F, T)
+            self.processed_features[i] = feat_comb.squeeze(0)
         
         return self
 

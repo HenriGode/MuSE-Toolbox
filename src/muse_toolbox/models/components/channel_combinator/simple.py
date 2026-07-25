@@ -22,7 +22,7 @@ class IdentityChannelCombinator(BaseChannelCombinator):
     def get_config(self) -> dict[str, Any]:
         return {"name": self.__class__.__name__}
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_(self, x: torch.Tensor) -> torch.Tensor:
         """
         Returns x unchanged.
         Shape: (B, C, F, T) -> (B, C, F, T)

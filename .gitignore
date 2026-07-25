@@ -80,3 +80,4 @@ htmlcov/
 .coverage
 .tox/
 docs/_build/
+src/muse_toolbox/pipelines/__pycache__/__init__.cpython-312.pyc

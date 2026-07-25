@@ -33,7 +33,7 @@ class TACChannelCombinator(BaseChannelCombinator):
             "hidden_dim": self.hidden_dim,
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass for TAC channel combinator.
         

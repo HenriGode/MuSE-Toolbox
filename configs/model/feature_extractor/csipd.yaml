@@ -1,4 +1,4 @@
 _target_: muse_toolbox.models.components.feature_extractors.CSIPD_Feature_Extractor
 _partial_: true
-mode: "ref"
+mode: "all"
 ref_channel: 0

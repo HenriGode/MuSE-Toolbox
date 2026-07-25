@@ -38,7 +38,7 @@ class MLPChannelCombinator(BaseChannelCombinator):
             "out_channels": self.out_channels,
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass for MLP channel combinator.
         

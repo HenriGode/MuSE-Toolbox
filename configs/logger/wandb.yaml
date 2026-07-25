@@ -1,6 +1,6 @@
 _target_: lightning.pytorch.loggers.WandbLogger
 project: "J3_test"
-name: "J3_BXLS_test"
+name: "PRA_ANF_${dataset.id}_${tname:${model.feature_extractor._target_}}_${tname:${model.channel_combinator._target_}}_${tname:${model.source_count_estimator._target_}}"
 group: "SAD"
 dir: "${hydra:runtime.output_dir}/logging"
 save_dir: "${hydra:runtime.output_dir}/logging"

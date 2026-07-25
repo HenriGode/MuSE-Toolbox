@@ -23,6 +23,22 @@ from muse_toolbox.pipelines.rtf_estimation_pipeline import run_rtf_estimation_pi
 
 log = logging.getLogger(__name__)
 
+def target_to_name(target_str: str) -> str:
+    """Safely extracts a readable model name from its Hydra _target_ string.
+    This avoids the 'hydra:runtime.choices' bug on HPC/Submitit worker nodes,
+    as it directly reads from the resolved config dictionary."""
+    if not target_str:
+        return "unknown"
+    name = target_str.split('.')[-1].lower()
+    name = name.replace("_feature_extractor", "")
+    name = name.replace("channelcombinator", "")
+    name = name.replace("estimator", "")
+    if name.startswith("selfattention"):
+        return "self_attention"
+    return name
+
+OmegaConf.register_new_resolver("tname", target_to_name, replace=True)
+
 @hydra.main(version_base=None, config_path="../configs", config_name="default")
 def main(cfg: DictConfig) -> None:
     """
@@ -51,23 +67,7 @@ def main(cfg: DictConfig) -> None:
     task = cfg.get("task", "source_counting")
     log.info(f"Starting MuSE-Toolbox Experiment with task: {task}")
     
-    # Safely inject the run name dynamically to avoid Hydra submitit interpolation bugs
-    from hydra.core.hydra_config import HydraConfig
-    if HydraConfig.initialized() and "logger" in cfg:
-        hc = HydraConfig.get()
-        # Only inject if the user hasn't hardcoded a static name
-        if cfg.logger.get("name") is None:
-            fe = hc.runtime.choices.get("model/feature_extractor", "unknown")
-            cc = hc.runtime.choices.get("model/channel_combinator", "unknown")
-            sce = hc.runtime.choices.get("model/source_count_estimator", "unknown")
-            dataset_id = cfg.dataset.get("id", "unknown")
-            
-            run_name = f"PRA_ANF_{dataset_id}_{fe}_{cc}_{sce}"
-            # Temporarily unfreeze config to set the name
-            OmegaConf.set_struct(cfg, False)
-            cfg.logger.name = run_name
-            OmegaConf.set_struct(cfg, True)
-            log.info(f"Dynamically set run name to: {run_name}")
+
     
     if task == "source_counting":
         run_source_counting_pipeline(cfg)
@@ -79,8 +79,6 @@ def main(cfg: DictConfig) -> None:
         log.info("=== Running Joint Pipeline ===")
         # 1. Run source counting and get the directory where predictions were saved
         # We enforce prediction saving in joint mode
-        from omegaconf import OmegaConf
-        
         sc_cfg = OmegaConf.create(cfg) # duplicate to avoid mutating global
         sc_cfg.predict = True
         if getattr(sc_cfg, "predictions_dir", None) is None:

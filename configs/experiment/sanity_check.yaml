@@ -2,9 +2,9 @@
 defaults:
   - override /task: source_counting
   - override /model: cosad
-  - override /dataset: pra_anf_circ_8ch # brudex
+  - override /dataset: pra_anf_circ_2-8ch # brudex
 
-  - override /model/feature_extractor: pure_stft
+  - override /model/feature_extractor: ipd
   - override /model/channel_combinator: self_attention
 
 trainer:
