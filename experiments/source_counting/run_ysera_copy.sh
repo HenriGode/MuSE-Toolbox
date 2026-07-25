@@ -10,7 +10,8 @@ echo "Creating tmux session: $SESSION"
 # Create new detached session with the first window for GPU 0
 tmux new-session -d -s $SESSION -n "GPU_0"
 # GPU 0 takes pure_stft, and when finished, starts wgmsc
-tmux send-keys -t $SESSION:0 "cd $PROJECT_DIR && /home/henrig/.conda/envs/j3/bin/python scripts/main.py experiment=J3_pra_anf dataset=pra_anf_circ_8ch trainer.devices=[0] model/feature_extractor=pure_stft model/channel_combinator=self_attention model/source_count_estimator=transformer && /home/henrig/.conda/envs/j3/bin/python scripts/main.py experiment=J3_pra_anf dataset=pra_anf_circ_8ch trainer.devices=[0] model/feature_extractor=wgmsc model/channel_combinator=self_attention model/source_count_estimator=transformer" C-m
+# tmux send-keys -t $SESSION:0 "cd $PROJECT_DIR && /home/henrig/.conda/envs/j3/bin/python scripts/main.py experiment=J3_pra_anf dataset=pra_anf_circ_8ch trainer.devices=[0] model/feature_extractor=pure_stft model/channel_combinator=self_attention model/source_count_estimator=transformer && /home/henrig/.conda/envs/j3/bin/python scripts/main.py experiment=J3_pra_anf dataset=pra_anf_circ_8ch trainer.devices=[0] model/feature_extractor=wgmsc model/channel_combinator=self_attention model/source_count_estimator=transformer" C-m
+tmux send-keys -t $SESSION:0 "cd $PROJECT_DIR && /home/henrig/.conda/envs/j3/bin/python scripts/main.py experiment=J3_pra_anf dataset=pra_anf_circ_8ch trainer.devices=[0] model/feature_extractor=wgmsc model/channel_combinator=self_attention model/source_count_estimator=transformer" C-m
 
 # GPU 1 takes log_mel
 # tmux new-window -t $SESSION:1 -n "GPU_1"
