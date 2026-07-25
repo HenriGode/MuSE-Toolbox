@@ -72,9 +72,7 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
 
     @property
     def feature_dim(self) -> int:
-        raise NotImplementedError(
-            "feature_dim is M-dependent for IPD features. Use Condensed_IPD_Feature_Extractor for fixed dimension."
-        )
+        return self.transform.num_freq_bins
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
         # batch: (B, M, F, T)
@@ -128,9 +126,7 @@ class CSIPD_Feature_Extractor(IPD_Feature_Extractor):
 
     @property
     def feature_dim(self) -> int:
-        raise NotImplementedError(
-            "feature_dim is M-dependent for CSIPD features. Use Condensed_CSIPD_Feature_Extractor for fixed dimension."
-        )
+        return 2 * self.transform.num_freq_bins
 
     def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
         # 1. Get standard IPD features: (B, P, F, T)

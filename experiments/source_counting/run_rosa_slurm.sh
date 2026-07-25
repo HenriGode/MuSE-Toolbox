@@ -25,6 +25,7 @@ conda run -n j3 python scripts/main.py -m \
   hydra.launcher.mem_gb=64 \
   hydra.launcher.timeout_min=4320 \
   hydra.launcher.name="MuSE_Sweep" \
-  hydra.launcher.array_parallelism=8
+  hydra.launcher.array_parallelism=8 \
+  hydra.launcher.setup=["module load Miniconda3/23.5.2-0"]
 
 echo "Submission complete! You can monitor the jobs using 'squeue -u \$USER'"

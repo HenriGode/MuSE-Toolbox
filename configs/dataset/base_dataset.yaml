@@ -2,8 +2,8 @@
 # Universal parameters shared by all datasets (simulated and real-world).
 
 data_dir: ${paths.data_dir}
-batch_size: 16
-num_workers: 16
+batch_size: 8
+num_workers: 4
 seed: 777
 acc_device: "cpu"
 

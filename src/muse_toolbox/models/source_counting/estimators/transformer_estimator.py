@@ -47,15 +47,18 @@ class MHALayer(nn.Module):
         # MultiheadAttention expects (T, B, embed_dim) if batch_first=False
         normed = normed.permute(2, 0, 1) # (T, B, embed_dim)
         
-        # Create a strict causal mask (T, T) where future tokens are -inf
+        # In some PyTorch versions, `is_causal=True` REQUIRES a boolean mask to be passed 
+        # to `nn.MultiheadAttention` to route to the FlashAttention backend properly.
+        # True means "not allowed to attend", so we mask the future (upper triangle).
         T = normed.size(0)
-        attn_mask = torch.triu(
-            torch.full((T, T), float("-inf"), device=normed.device), 
-            diagonal=1
-        )
+        attn_mask = ~torch.tril(torch.ones((T, T), dtype=torch.bool, device=normed.device))
         
-        # In PyTorch, attn_mask is passed directly to the MHA
-        out, _ = self.mha(normed, normed, normed, attn_mask=attn_mask)
+        out, _ = self.mha(
+            normed, normed, normed, 
+            need_weights=False, 
+            is_causal=True,
+            attn_mask=attn_mask
+        )
         
         # Permute back to (B, embed_dim, T) and add residual
         return out.permute(1, 2, 0) + x
