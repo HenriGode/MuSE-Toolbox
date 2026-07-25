@@ -18,7 +18,7 @@ conda run -n j3 python scripts/main.py -m \
   model/channel_combinator=self_attention \
   model/source_count_estimator=transformer \
   trainer.devices=[0] \
-  hydra/launcher=submitit \
+  hydra/launcher=submitit_slurm \
   hydra.launcher.partition=hfag.p \
   hydra.launcher.gres="gpu:L40S:1" \
   hydra.launcher.cpus_per_task=16 \
