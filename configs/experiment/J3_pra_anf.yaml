@@ -8,4 +8,4 @@ experiment_name: J3_feature_comparison
 
 logger:
   project: "${experiment_name}"
-  name: "PRA_ANF_${dataset.id}_${hydra:runtime.choices.model/feature_extractor}_${hydra:runtime.choices.model/channel_combinator}_${hydra:runtime.choices.model/source_count_estimator}"
+
