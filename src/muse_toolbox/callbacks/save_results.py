@@ -83,11 +83,9 @@ class SaveTestResultsCallback(Callback):
         os.makedirs(out_dir, exist_ok=True)
         
         # 4. Save to CSV
-        for df in dataframes:
-            # Assuming the metric dataframe has a distinct identifier, or we just save combined
-            save_path = os.path.join(out_dir, "test_metrics.csv")
-            df.to_csv(save_path, index=False)
-            log.info(f"Saved metric results to {save_path}")
+        save_path = os.path.join(out_dir, "test_metrics.csv")
+        combined_df.to_csv(save_path, index=False)
+        log.info(f"Saved metric results to {save_path}")
 
         # 5. Reset metrics
         model.metric_collections["test"].reset()

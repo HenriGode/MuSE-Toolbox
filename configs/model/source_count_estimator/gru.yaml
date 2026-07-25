@@ -1,0 +1,7 @@
+_target_: muse_toolbox.models.source_counting.estimators.GRU_estimator
+_partial_: true
+max_sources: ${dataset.generation_config.max_sources}
+hidden_size: 1.0
+num_layers: 2
+dropout: 0.0
+bias: True

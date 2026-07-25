@@ -1,6 +1,7 @@
 defaults:
   - feature_extractor: wgmsc
   - channel_combinator: null
+  - source_count_estimator: transformer
 
 _target_: muse_toolbox.models.source_counting.cosad.COSADmodule
 
@@ -8,15 +9,6 @@ _target_: muse_toolbox.models.source_counting.cosad.COSADmodule
 transform: ${transform}
 batch_size: ${dataset.batch_size}
 
-
-source_count_estimator:
-  _target_: muse_toolbox.models.source_counting.estimators.GRU_estimator
-  _partial_: true
-  max_sources: ${dataset.generation_config.max_sources}
-  hidden_size: 1.0
-  num_layers: 2
-  dropout: 0.0
-  bias: True
 
 loss_config:
   CrossEntropy:
@@ -43,6 +35,7 @@ metrics_train: {}
 metrics_val:
   TolerantEventF1:
     tolerance_time: 0.5
+  META2DF: {}
   MAE: {}
   MSE: {}
   Accuracy: {}
@@ -53,6 +46,7 @@ metrics_val:
 metrics_test:
   TolerantEventF1:
     tolerance_time: 0.5
+  META2DF: {}
   MAE: {}
   MSE: {}
   Accuracy: {}

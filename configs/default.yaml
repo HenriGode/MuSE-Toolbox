@@ -19,14 +19,12 @@ predictions_dir: null
 
 paths:
   root_dir: ${oc.env:PROJECT_ROOT}
-  output_dir: ${paths.root_dir}/outputs
   data_dir: ${paths.root_dir}/data
-  log_dir: ${paths.output_dir}/logging
 
 hydra:
   run:
-    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/${logger.name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/multirun
+    dir: ${paths.root_dir}/outputs/${task}/${experiment_name}/multirun/${logger.name}
     subdir: ${hydra.job.num}
   output_subdir: logging/.hydra

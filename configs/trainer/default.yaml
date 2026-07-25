@@ -1,7 +1,7 @@
 _target_: lightning.pytorch.Trainer
 accelerator: "auto"
 devices: [2]
-precision: 32
-max_epochs: 2
+precision: "16-mixed"
+max_epochs: 100
 
 # Note: Custom batch sizes are now handled via dataset.batch_size

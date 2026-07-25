@@ -1,0 +1,11 @@
+_target_: muse_toolbox.models.source_counting.estimators.transformer_estimator.TransformerEstimator
+_partial_: true
+max_sources: ${dataset.generation_config.max_sources}
+chunk_size: 7
+subsample: 1
+embed_dim: 128
+n_heads: 4
+ff_inner: 1024
+n_layers: 4
+dropout: 0.2
+max_seq_len: 10000

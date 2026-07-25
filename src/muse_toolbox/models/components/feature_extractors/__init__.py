@@ -13,3 +13,4 @@ from .log_mel import (
 from .stacked_features import StackedFeatureExtractor
 from .stft_conv import STFT_Conv_Feature_Encoder
 from .wgmsc import WGMSC_Feature_Extractor
+from .pure_stft import PureSTFTFeatureExtractor

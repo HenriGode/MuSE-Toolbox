@@ -16,8 +16,6 @@ class META2DF(BaseMetric):
     full_state_update = False
     requires_reference = True
 
-    input_snr: list[float]
-    fixed_seg_length: list[float]
     scenario_ids: list[str]
 
     def __init__(self, transform: STFTtransform, model_name: str, *args, **kwargs):
@@ -36,9 +34,23 @@ class META2DF(BaseMetric):
 
         self.ref_channel = 0  # Assuming the first channel is the reference TODO: make this configurable
 
-        # add input snr and fixed seg length so that they are saved to the combined dataframe
-        self.add_state("input_snr", default=[], dist_reduce_fx="cat")
-        self.add_state("fixed_seg_length", default=[], dist_reduce_fx="cat")
+        # self.meta_keys = [
+        #     "num_sources", "signal_length", "snr", "sirs", "room_dims", 
+        #     "rt60", "mic_array", "mic_pos", "source_positions", 
+        #     "noise_file_path", "fixed_time_between_events", 
+        #     "activity_pattern", "sources", "transform", "generator_id"
+        # ]
+        self.meta_keys = [
+            "num_sources", "signal_length", "snr", "sirs", "room_dims", 
+            "rt60", "mic_array", "mic_pos", "source_positions", 
+            "noise_file_path", "fixed_time_between_events", 
+        ]
+
+        for key in self.meta_keys:
+            # Avoid overwriting self.transform
+            state_key = "scenario_transform" if key == "transform" else key
+            self.add_state(state_key, default=[], dist_reduce_fx="cat")
+
         self.add_state("scenario_ids", default=[], dist_reduce_fx="cat")
 
     def update(
@@ -61,8 +73,13 @@ class META2DF(BaseMetric):
         for bidx in range(len(preds)):
             scenario_params = meta["scenario_params"][bidx]
 
-            self.input_snr.append(scenario_params["snr"])
-            self.fixed_seg_length.append(scenario_params["fixed_time_between_events"])
+            for key in self.meta_keys:
+                state_key = "scenario_transform" if key == "transform" else key
+                # Convert complex nested arrays/lists to lists for dataframe compatibility
+                val = scenario_params.get(key, None)
+                if hasattr(val, "tolist"):
+                    val = val.tolist()
+                getattr(self, state_key).append(val)
 
             self.scenario_ids.append(meta["scenario_id"][bidx])
 
@@ -72,7 +89,7 @@ class META2DF(BaseMetric):
         Returns:
             dict | None: Dictionary with `added_meta` flag.
         """
-        return {"added_meta": torch.tensor(1)}
+        return {"added_meta": torch.tensor(1.0)}
 
     def get_dataframe(self) -> pd.DataFrame | None:
         """Constructs a DataFrame summarizing extracted scenario metadata.
@@ -80,10 +97,11 @@ class META2DF(BaseMetric):
         Returns:
             pd.DataFrame | None: Dataframe containing scenario parameters.
         """
-        results_dict = {
-            "input_snr": self.input_snr,
-            "fixed_seg_length": self.fixed_seg_length,
-        }
+        results_dict = {}
+        for key in self.meta_keys:
+            state_key = "scenario_transform" if key == "transform" else key
+            results_dict[key] = getattr(self, state_key)
+
         df = pd.DataFrame(results_dict, index=self.scenario_ids)
         df.index.name = "scenario_id"
         return df

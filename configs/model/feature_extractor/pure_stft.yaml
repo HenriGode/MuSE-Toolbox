@@ -1,0 +1,4 @@
+_target_: muse_toolbox.models.components.feature_extractors.PureSTFTFeatureExtractor
+
+# The transformer configuration will be automatically passed from the parent module
+transform: ${transform}
