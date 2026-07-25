@@ -11,7 +11,17 @@ echo "Submitting 15 runs to the Rosa SLURM queue..."
 # SLURM will automatically manage scheduling the 15 jobs on the hfag.p partition.
 # We set trainer.devices=[0] because SLURM will map the allocated GPU to CUDA_VISIBLE_DEVICES=0 for each job.
 
-conda run -n j3 python scripts/main.py -m \
+SESSION="rosa_sweep_master"
+echo "Starting tmux session '$SESSION' to run the master submission script in the background..."
+
+# Kill any existing session with the same name
+tmux kill-session -t $SESSION 2>/dev/null
+
+# Create a detached tmux session
+tmux new-session -d -s $SESSION -n "Master"
+
+# Send the multirun command to the tmux session
+tmux send-keys -t $SESSION:0 "conda run -n j3 python scripts/main.py -m \
   experiment=J3_pra_anf \
   dataset=pra_anf_circ_2-8ch,pra_anf_rand_8ch,pra_anf_rand_2-8ch \
   model/feature_extractor=pure_stft,log_mel,ipd,gmsc,wgmsc \
@@ -20,12 +30,20 @@ conda run -n j3 python scripts/main.py -m \
   trainer.devices=[0] \
   hydra/launcher=submitit_slurm \
   hydra.launcher.partition=hfag.p \
-  hydra.launcher.gres="gpu:L40S:1" \
+  hydra.launcher.gres=\"gpu:L40S:1\" \
   hydra.launcher.cpus_per_task=16 \
   hydra.launcher.mem_gb=64 \
   hydra.launcher.timeout_min=4320 \
-  hydra.launcher.name="MuSE_Sweep" \
+  hydra.launcher.name=\"MuSE_Sweep\" \
   hydra.launcher.array_parallelism=8 \
-  hydra.launcher.setup=["module load Miniconda3/23.5.2-0"]
+  hydra.launcher.setup=[\"module load Miniconda3/23.5.2-0\"]" C-m
 
-echo "Submission complete! You can monitor the jobs using 'squeue -u \$USER'"
+echo "--------------------------------------------------------"
+echo "Master submission process is now running in the background!"
+echo "To watch the master process (which waits for all jobs to finish), attach to the session:"
+echo "    tmux attach-session -t $SESSION"
+echo "To detach again, press Ctrl+B, then d"
+echo ""
+echo "Or you can simply check your cluster queue using:"
+echo "    squeue -u \$USER"
+echo "--------------------------------------------------------"
