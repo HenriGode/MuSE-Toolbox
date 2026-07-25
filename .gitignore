@@ -11,14 +11,14 @@ lightning_logs/
 wandb/
 
 # Data and Outputs (Crucial for this project)
-data/
-outputs/
-logs/
-checkpoints/
-predictions/
-results/
-output_audio/
-databases/
+/data/
+/outputs/
+/logs/
+/checkpoints/
+/predictions/
+/results/
+/output_audio/
+/databases/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -64,3 +64,19 @@ wheels/
 *.bmp
 *.tiff
 *.webp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing and profiling
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+docs/_build/
