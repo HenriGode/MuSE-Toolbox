@@ -32,7 +32,7 @@
 
 \renewcommand{\familydefault}{\sfdefault}
 
-\title{Array Agnostic Low Latency DNN-Based \\Online Source Counting}
+\title{Array Agnostic Low Latency DNN-Based\\ Online Source Counting}
 \subtitle{SigProc Group Meeting}
 \date{\today}
 \author[Henri Gode]{\underline{Henri Gode}}
@@ -90,12 +90,11 @@
     \vspace{1em}
 
     \onslide<3->{
-      \textbf{Challenges of Online Source Counting}
+      \textbf{Our Focus}
       \begin{itemize}
-        \item \textbf{Time-varying} number of active sources %(e.g., conversations).
-        \item Real-time applications require \textbf{low latency} %(e.g., conversations).
-              % \item The array geometry is unknown (e.g., wearable devices).
-        \item \textbf{Geometry-agnostic} approaches desirable (e.g., wearable devices).
+        \item \textbf{DNN-based} source counting
+        \item \textbf{Low latency} (frame-causal)
+        \item \textbf{Geometry-agnostic} (arbitrary microphone array configurations)
       \end{itemize}
     }
   \end{minipage}
@@ -118,133 +117,121 @@
 % ----------------------------------------------------------------------
 % 3. General System Overview
 % ----------------------------------------------------------------------
-\begin{frame}{General System Overview}
-    \begin{center}
+\begin{frame}{General System Overview - Single Feature}
+    \begin{minipage}{0.75\textwidth}
         \begin{tikzpicture}
 
             % Place nodes
-            \node (input) [io2] {$\mathbf{y}$\\$\mathbb{R}^{[M, N]}$};
+            \node (input) [io2] {raw audio $\mathbf{y}$\\ \tiny $\left[M, N\right]$};
             \node (stft) [process2, below of=input, node distance=1.5cm] {STFT};
-            \node (feature) [investigate2, right of=stft, node distance=2.7cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
-            \node (feature2) [investigate2, below of=feature, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 2}};
-            \node (feature3) [investigate2, below of=feature2, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 3}};
-            \node (chcombiner) [investigate2, right of=feature, node distance=2.5cm] {\textbf{Channel} \\ \textbf{Comb. 1}};
-            \node (chcombiner2) [investigate2, right of=feature2, node distance=2.5cm] {\textbf{Channel} \\ \textbf{Comb. 2}};
-            \node (chcombiner3) [investigate2, right of=feature3, node distance=2.5cm] {\textbf{Channel} \\ \textbf{Comb. 3}};
-            \node (geometry) [io2, left of=feature3, node distance=2.5cm] {Array Geometry \\$\mathbf{G}\in\mathbb{R}^{[M, 3]}$};
-            \node (stacker) [process2, right of=chcombiner2, node distance=2.5cm] {\textbf{Concat}};
-            \node (dnn) [process2, right of=stacker, node distance=2.5cm] {\textbf{DNN} \\ Classifier};
-            \node (output) [io2, above of=dnn, node distance=1.5cm] {Source Count $\widehat{K}_t$};
+            \node<2-> (feature) [investigate2, right of=stft, node distance=2.6cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
+            \node<3-> (chcombiner) [investigate2, right of=feature, node distance=2.75cm] {\textbf{Channel} \\ \textbf{Comb. 1}};
+            \node<4-> (dnn) [process2, right of=chcombiner, node distance=2.3cm] {\textbf{DNN} \\ Classifier};
+            \node<5-> (output) [io2, above of=dnn, node distance=1.5cm] {source count $\widehat{S}_t$ \\ \tiny $\left[S, T\right]$};
 
             % Draw edges
             \draw [arrow2] (input) -- (stft);
-            \draw [arrow2, dotted] (geometry) -- (feature3);
             % \draw [arrow2, dotted] (geometry) -| (dnn);
-            \draw [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {$\mathbb{C}^{[M, F, T]}$} (feature);
+            \draw<2-> [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {\tiny $\left[M, 2K, T\right]$} (feature);
             % \draw [arrow2] (stft) -- (feature);
-            \draw [arrow2] (stft) |- (feature2);
-            \draw [arrow2, dashed] (feature) -- (chcombiner2);
-            \draw [arrow2, dashed] (feature) -- (chcombiner3);
-            \draw [arrow2, dashed] (feature2) -- (chcombiner);
-            \draw [arrow2, dashed] (feature2) -- (chcombiner3);
-            \draw [arrow2, dashed] (feature3) -- (chcombiner2);
-            \draw [arrow2, dashed] (feature3) -- (chcombiner);
-            \draw [arrow2] (feature) -- node[above] {$\bm{\xi}$} node[below] {\Tiny $[P_M,\tilde{F},T]$} (chcombiner);
-            \draw [arrow2] (feature2) --  (chcombiner2);
-            \draw [arrow2] (feature3) --  (chcombiner3);
-            \draw [arrow2] (chcombiner) -|  (stacker);
-            \draw [arrow2] (chcombiner2) -- node[above] {$\bm{\psi}$} node[below] {\Tiny $[J_2,F,T]$} (stacker);
-            \draw [arrow2] (chcombiner3) -|  (stacker);
-            \draw [arrow2] (stacker) -- node[above] {$\bm{\psi}$} node[below] {\Tiny $[J,F,T]$} (dnn);
-            \draw [arrow2] (dnn) -- (output);
+            \draw<3-> [arrow2] (feature) -- node[above] {$\bm{\xi}$} node[below] {\tiny $\left[C(M),F,T\right]$} (chcombiner);
+            \draw<4-> [arrow2] (chcombiner) -- node[above] {$\bm{\psi}$} node[below] {\tiny $\left[F,T\right]$} (dnn);
+            \draw<5-> [arrow2] (dnn) -- (output);
         \end{tikzpicture}
-    \end{center}
-    \vspace{1.5em}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.23\textwidth}
+        \tiny
+        \begin{itemize}
+            \item $M \rightarrow$ \# microphones 
+            \item $N \rightarrow$ \# time-samples 
+            \item<2-> $T \rightarrow$ \# time-frames (STFT)
+            \item<2-> $K \rightarrow$ \# frequencies (STFT)
+            \item<3-> $C(M) \rightarrow$ \# channels 
+            \item<3-> $F \rightarrow$ \# features
+            \item<5-> $S \rightarrow$ max. \# sources
+            \item<5-> $\widehat{S}_t \rightarrow$ estimated source count (at time $t$)
+        \end{itemize}
+    \end{minipage}
+
+        \vspace{1.5em}
     \begin{itemize}
-        \item \textbf{Causal Pipeline:} Processes data frame-by-frame without future lookahead.
-        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, and fusion schemes.
+        \item \textbf{Frame-Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators
     \end{itemize}
 \end{frame}
+
+
 
 % ----------------------------------------------------------------------
 % 4. Details: Raw Audio & STFT
 % ----------------------------------------------------------------------
 \begin{frame}{Details: Raw Audio \& STFT}
-    \textbf{Raw Audio Input}
+    \begin{tikzpicture}[remember picture, overlay]
+        \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+            \includegraphics[width=0.60\textwidth]{figures_J3/flow_chart.png}
+        };
+    \end{tikzpicture}
+    \underline{\textbf{Raw Audio Input}}
+    \vspace{1.0em}
     \begin{itemize}
-        \item Microphone signal array: $\mathbf{y} \in \mathbb{R}^{M \times N_{samples}}$
-        \item $M$: Number of microphones in the array (e.g., $M \in [2, 8]$).
-    \end{itemize}
-    \vspace{1em}
-    \textbf{Short-Time Fourier Transform (STFT)}
-    \begin{itemize}
+        \item Microphone signal array: $\mathbf{y} \in \mathbb{R}^{M \times N}$
         \item \textbf{Sampling Frequency:} $f_s = 8000$ Hz
-        \item \textbf{Frame Length (Window):} $T_{L} = 64$ ms $\rightarrow N_{FFT} = 512$ samples
-        \item \textbf{Frame Shift (Hop):} $T_{S} = 16$ ms $\rightarrow 128$ samples
-        \item \textbf{Window Type:} Square-root Hann
-        \item \textbf{Output Domain:} $\mathbf{Y} \in \mathbb{C}^{F \times M \times T}$
-        \item \textbf{Frequency Bins:} $F = \frac{N_{FFT}}{2} + 1 = 257$ bins.
+        \item \textbf{Number of microphones:} $M \in [2, 8]$
+        \item \textbf{Signal Length:} $\SI{120}{s} \rightarrow N = \SI{960000}{samples}$ \
+    \end{itemize}
+    \vspace{2em}
+    \underline{\textbf{Short-Time Fourier Transform (STFT)}}
+    \vspace{1.0em}
+    \begin{itemize}
+        \item \textbf{Frame Length:} $\SI{32}{\milli\second} \rightarrow N_{FFT} = 256$ samples
+        \item \textbf{Frame Shift:} $\SI{16}{\milli\second} \rightarrow 128$ samples
+        \item \textbf{Window Type:} square-root Hann
+        \item \textbf{Frequency Bins:} $K = \frac{N_{FFT}}{2} + 1 = 257$ bins
+        \item \textbf{Number of frames:} $T = \lceil \frac{N_{samples}}{128} \rceil + 1 = 7501$
+        \item \textbf{STFT Output:} $\mathbf{Y} \in \mathbb{C}^{M \times K \times T} \rightarrow \mathbf{Y} \in \mathbb{R}^{M \times 2K \times T}$
     \end{itemize}
 \end{frame}
 
-% ----------------------------------------------------------------------
-% 5. Feature Extractors: General Overview
-% ----------------------------------------------------------------------
-% \begin{frame}{Details: Feature Extractors (General Overview)}
-%     We systematically investigate three distinct categories of feature representations:
-%     \vspace{1em}
-%     \begin{columns}[T]
-%         \begin{column}{0.33\textwidth}
-%             \begin{block}{1. Spectral Features}
-%                 Capture the absolute signal energy, spectral envelope, and harmonic structures of the speech.
-%                 \\ \textit{Depends on individual channels.}
-%             \end{block}
-%         \end{column}
-%         \begin{column}{0.33\textwidth}
-%             \begin{block}{2. Spatial Features}
-%                 Capture relative phase differences, spatial coherence, and the rank-1 update dynamics of activating sources.
-%                 \\ \textit{Depends on microphone pairs or covariance matrices.}
-%             \end{block}
-%         \end{column}
-%         \begin{column}{0.33\textwidth}
-%             \begin{block}{3. Microphone Positions}
-%                 Explicit Cartesian coordinates providing the network with absolute geometric context.
-%                 \\ \textit{Describes the physical array.}
-%             \end{block}
-%         \end{column}
-%     \end{columns}
-% \end{frame}
 
 % ----------------------------------------------------------------------
 % 6. Details: Spectral Features
 % ----------------------------------------------------------------------
-\begin{frame}{Feature Types: Spectral Features}
-
+\begin{frame}{Features}
+    \begin{tikzpicture}[remember picture, overlay]
+        \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+            \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+        };
+    \end{tikzpicture}
+    
     \onslide<1->{
-        \begin{block}{\textbf{Feautre types}}
-            \begin{itemize}
-                \item Spectral features
-                \item Spatial features
-                \item Microphone positions (relative)
-            \end{itemize}
-        \end{block}
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
     }   
     \onslide<2->{
+        \vspace{2em}
         \begin{itemize}
-            \item \textbf{Raw STFT Features}
+            \item \textbf{Raw STFT Features} (spectral \& spatial)
                   \begin{itemize}
-                      \item complex spectrogram (magnitude \& phase, real \& imag)
-                  \item \textbf{Dimensions:} $\bm{\xi}^{(STFT)} \in \mathbb{R}^{M \times F \times T}$
-                  \item \textit{Pros:} No information loss, still contains spatial information
-                  \item \textit{Cons:} Highly dependent on geometry and very high dimensionality
-              \end{itemize}
-              \vspace{1em}
-        \item \textbf{Log-Mel Features}
+                      \item $\bm{\xi}^{(STFT)} \in \mathbb{R}^{M \times 2K \times T}$
+                      \item real \& imag (or magnitude \& phase)
+                      \item \textit{Pros:} No information loss, still contains spatial information
+                      \item \textit{Cons:} Highly dependent on geometry and very high dimensionality
+                  \end{itemize}
+              \vspace{1em}  
+        \item \textbf{Log-Mel Features} (spectral)
               \begin{itemize}
-                  \item Per-channel dimensionality reduction condensing $F$ bins into $F_{Mel}$ perceptual bands.
-                  \item \textbf{Dimensions:} $\bm{\xi}^{(Mel)} \in \mathbb{R}^{M \times F_{Mel} \times T}$
-                  \item Default parameters: $F_{Mel} = 80$, $f_{min} = 80$ Hz.
-                  \item \textit{Pros:} Reduces dimensionality, retains core speech features.
+                  \item $\bm{\xi}^{(Mel)} \in \mathbb{R}^{M \times K_{Mel} \times T}$
+                  \item Nonlinear filterbank performs per-channel dim. reduction  \\ ($K=257$ freq. bins $\rightarrow K_{Mel}=80$ perceptual bands)
+                  \item \textit{Pros:} Reduces dimensionality motivated by psychoacoustics
                   \item \textit{Cons:} Loss of spatial information
               \end{itemize}
     \end{itemize}
@@ -255,31 +242,38 @@
 % 7. Details: Spatial Features
 % ----------------------------------------------------------------------
 \begin{frame}{Details: Spatial Features}
-
+    \begin{tikzpicture}[remember picture, overlay]
+        \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+            \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+        };
+    \end{tikzpicture}
+    
     \onslide<1->{
-        \begin{block}{\textbf{Feature types}}
-            \begin{itemize}
-                \item Spectral features
-                \item Spatial features
-                \item Microphone positions (relative)
-            \end{itemize}
-        \end{block}
-    }   
-    \onslide<1->{
-
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
+    }
+    \onslide<1->{   
     \begin{itemize}
-        \item \textbf{Inter-channel Phase Differences (IPD / CSIPD)}
+        \item \textbf{Inter-channel Phase Differences (IPD / CSIPD)} (spatial)
               \begin{itemize}
-                  \item Cosine and Sine of the phase difference between microphone pairs.
-                  \item \textbf{Dimensions:} $\bm{\xi}_{t,f}^{(CSIPD)} \in \mathbb{R}^{2P \times F \times T}$
+                  \item IPD: ${\Delta\phi_{ij}} = \phi_i - \phi_j \quad\rightarrow\quad \bm{\xi}_{t,f}^{(IPD)} \in \mathbb{R}^{P \times K \times T}$
+                  \item CSIPD: Cosine and Sine of IPD \\ ${\Delta\phi_{ij}^{\text{cos}}} = \cos(\Delta\phi_{ij}), {\Delta\phi_{ij}^{\text{sin}}} = \sin(\Delta\phi_{ij}) \quad\rightarrow\quad \bm{\xi}_{t,f}^{(CSIPD)} \in \mathbb{R}^{2P \times K \times T}$
                   \item Number of pairs $P = \frac{M(M-1)}{2}$. For $M=8$, $P=28$.
               \end{itemize}
               \vspace{1em}
-        \item \textbf{Generalized Magnitude Squared Coherence (GMSC \& wGMSC)}
+        \item \textbf{Generalized Magnitude Squared Coherence (GMSC \& wGMSC)} (spatial)
               \begin{itemize}
+                  \item $\bm{\xi}_{t,f}^{(wGMSC)} \in \mathbb{R}^{1 \times 2KF \times T}$
                   \item Quantifies spatial coherence without explicit pairing; detects rank-1 covariance updates.
                   \item Whitened GMSC (wGMSC) focuses on \textit{change detection} (source activations/deactivations).
-                  \item \textbf{Dimensions:} $\bm{\xi}_{t,f}^{(wGMSC)} \in \mathbb{R}^{2 \times F \times T}$
                   \item \textit{Pros:} Naturally aggregates $M$ channels into a single dimension! Independent of $M$.
               \end{itemize}
     \end{itemize}
@@ -377,6 +371,76 @@
         \item Maximum simulated sources: $K_{max} = 4$.
         \item Total Output Classes: $5$ (Counts: $0, 1, 2, 3, 4$).
         \item \textbf{Inference:} The framewise source count estimate $\widehat{K}_t$ is derived via the $\argmax$ operation over the class probabilities at each frame.
+    \end{itemize}
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 12. General System Overview - Multi-Feature Fusion
+% ----------------------------------------------------------------------
+\begin{frame}{General System Overview - Multi-Feature Fusion}
+    \begin{center}
+        \begin{tikzpicture}
+
+            % Place nodes
+            \node (input) [io2] {raw audio $\mathbf{y}$\\ \tiny $\left[M, N\right]$};
+            \node (stft) [process2, below of=input, node distance=1.5cm] {STFT};
+            \node (feature) [investigate2, right of=stft, node distance=2.57cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
+            \node (feature2) [investigate2, below of=feature, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 2}};
+            \node (feature3) [investigate2, below of=feature2, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 3}};
+            \node (chcombiner) [investigate2, right of=feature, node distance=2.95cm] {\textbf{Channel} \\ \textbf{Comb. 1}};
+            \node (chcombiner2) [investigate2, right of=feature2, node distance=2.95cm] {\textbf{Channel} \\ \textbf{Comb. 2}};
+            \node (chcombiner3) [investigate2, right of=feature3, node distance=2.95cm] {\textbf{Channel} \\ \textbf{Comb. 3}};
+            \node (geometry) [io2, left of=feature3, node distance=2.25cm] {Array Geometry \\ \tiny $[M, 3]$};
+            \node (stacker) [process2, right of=chcombiner2, node distance=2.3cm] {\textbf{Concat}};
+            \node (dnn) [process2, right of=stacker, node distance=2.25cm] {\textbf{DNN} \\ Classifier};
+            \node (output) [io2, below of=dnn, node distance=1.5cm] {source count $\widehat{S}_t$ \\ \tiny $\left[S, T\right]$};  
+
+            % Draw edges
+            \draw [arrow2] (input) -- (stft);
+            \draw [arrow2, dotted] (geometry) -- (feature3);
+            % \draw [arrow2, dotted] (geometry) -| (dnn);
+            \draw [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {\tiny $\left[M, 2K, T\right]$} (feature);
+            % \draw [arrow2] (stft) -- (feature);
+            \draw [arrow2] (stft) |- node[above, pos = 0.85] {$\mathbf{Y}$} node[below, pos = 0.85] {\tiny $\left[M, 2K, T\right]$} (feature2);
+            % \draw [arrow2] (stft) |- (feature2);
+            \draw<2-> [arrow2, dashed] (feature) -- (chcombiner2);
+            \draw<2-> [arrow2, dashed] (feature) -- (chcombiner3);
+            \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner);
+            \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner3);
+            \draw<2-> [arrow2, dashed] (feature3) -- (chcombiner2);
+            \draw<2-> [arrow2, dashed] (feature3) -- (chcombiner);
+            \draw [arrow2] (feature) -- node[above] {$\bm{\xi}_1$} node[below] {\tiny $\left[C_1(M),F_1,T\right]$} (chcombiner);
+            \draw [arrow2] (feature2) -- (chcombiner2);
+            \path<1> (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (chcombiner2);
+            \draw [arrow2] (feature3) -- node[above] {$\bm{\xi}_3$} node[below] {\tiny $\left[C_3(M),F_3\right]$} (chcombiner3);
+            \draw [arrow2] (chcombiner) -| node[above, pos=0.15] {$\bm{\psi}_1$} node[below, pos=0.15] {\tiny $\left[F_1,T\right]$} (stacker);
+            \draw [arrow2] (chcombiner2) -- node[above] {$\bm{\psi}_2$} node[below] {\tiny $\left[F_2,T\right]$} (stacker);
+            \draw [arrow2] (chcombiner3) -| node[above, pos=0.15] {$\bm{\psi}_3$} node[below, pos=0.15] {\tiny $\left[F_3\right]$} (stacker);
+            \draw [arrow2] (stacker) -- node[above] {$\bm{\psi}$} node[below] {\tiny $\left[F,T\right]$} (dnn);
+            \draw [arrow2] (dnn) -- (output);
+            
+            % Legend in the upper right corner
+            \node (legend) [anchor=north east] at (dnn.east |- input.north) {
+                \begin{minipage}{0.2\textwidth}
+                    \tiny
+                    \begin{itemize}
+                        \item $M \rightarrow$ \# microphones 
+                        \item $N \rightarrow$ \# time-samples 
+                        \item $T \rightarrow$ \# time-frames 
+                        \item $K \rightarrow$ \# frequencies 
+                        \item $C(M) \rightarrow$ \# channels 
+                        \item $F \rightarrow$ \# features
+                        \item $S \rightarrow$ max. \# sources
+                    \end{itemize}
+                \end{minipage}
+            };
+        \end{tikzpicture}
+    \end{center}
+    \vspace{1.5em}
+    \begin{itemize}
+        \item \textbf{Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, and fusion schemes.
     \end{itemize}
 \end{frame}
 

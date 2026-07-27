@@ -183,26 +183,25 @@ class HeterogeneousBatch:
         # 1. Process Raw Audio
         for item in self.raw_audio:
             # item: (M, N) -> Unsqueeze to (1, M, N) for batch processing
-            feat = extractor.forward_raw_audio(item.unsqueeze(0))
+            feat = extractor.forward(item.unsqueeze(0), input_type="raw_audio")
             self.processed_features.append(feat.squeeze(0))  # Store as (J, T)
 
         # 2. Process STFT Audio
         for item in self.stft_audio:
             # item: (F, M, T) or similar.
-            # We assume item has correct dimensions for the extractor except batch.
-            feat = extractor.forward_stft(item.unsqueeze(0))
+            feat = extractor.forward(item.unsqueeze(0), input_type="stft")
             self.processed_features.append(feat.squeeze(0))
 
         # 3. Process Precomputed Features
         for item in self.features:
             if isinstance(item, torch.Tensor):
                 # item: (J, T) -> Unsqueeze to (1, J, T)
-                feat = extractor.forward_precomputed_features(item.unsqueeze(0))
+                feat = extractor.forward(item.unsqueeze(0), input_type="features")
                 self.processed_features.append(feat.squeeze(0))
             elif isinstance(item, dict):
                 # item is a dict of tensors. We need to unsqueeze each tensor.
                 unsqueezed_item = {k: v.unsqueeze(0) for k, v in item.items()}
-                feat = extractor.forward_precomputed_features_dict(unsqueezed_item)
+                feat = extractor.forward(unsqueezed_item, input_type="features")
                 self.processed_features.append(feat.squeeze(0))
             else:
                 raise TypeError(f"Unexpected type in self.features: {type(item)}")

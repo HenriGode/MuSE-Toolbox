@@ -30,6 +30,10 @@ class PureSTFTFeatureExtractor(BaseFeatureExtractor):
         return False
 
     @property
+    def precompute_type(self) -> str:
+        return "stft"
+
+    @property
     def signature(self) -> str:
         return (
             f"PureSTFT_fl{self.transform.frame_length}_fs{self.transform.frame_shift}"

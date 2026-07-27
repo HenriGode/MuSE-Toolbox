@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2025.9.10)  20 JUL 2026 11:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2025.9.10)  27 JUL 2026 17:10
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1042,299 +1042,270 @@ Package pdftex.def Info: figures_theme/title.pdf  used on input line 51.
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc} <./figures_theme/title.pdf>]
 LaTeX Font Info:    Font shape `T1/phv/m/it' in size <8> not available
-(Font)              Font shape `T1/phv/m/sl' tried instead on input line 116.
+(Font)              Font shape `T1/phv/m/sl' tried instead on input line 115.
 LaTeX Font Info:    Font shape `T1/phv/m/it' in size <6> not available
-(Font)              Font shape `T1/phv/m/sl' tried instead on input line 116.
+(Font)              Font shape `T1/phv/m/sl' tried instead on input line 115.
 LaTeX Font Info:    Font shape `T1/phv/bx/it' in size <8> not available
-(Font)              Font shape `T1/phv/b/it' tried instead on input line 116.
+(Font)              Font shape `T1/phv/b/it' tried instead on input line 115.
 LaTeX Font Info:    Font shape `T1/phv/b/it' in size <8> not available
-(Font)              Font shape `T1/phv/b/sl' tried instead on input line 116.
+(Font)              Font shape `T1/phv/b/sl' tried instead on input line 115.
 LaTeX Font Info:    Font shape `T1/phv/bx/it' in size <6> not available
-(Font)              Font shape `T1/phv/b/it' tried instead on input line 116.
+(Font)              Font shape `T1/phv/b/it' tried instead on input line 115.
 LaTeX Font Info:    Font shape `T1/phv/b/it' in size <6> not available
-(Font)              Font shape `T1/phv/b/sl' tried instead on input line 116.
+(Font)              Font shape `T1/phv/b/sl' tried instead on input line 115.
 <figures_new/scenario_plot.pdf, id=26, 245.6116pt x 210.52452pt>
 File: figures_new/scenario_plot.pdf Graphic file (type pdf)
 <use figures_new/scenario_plot.pdf>
-Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 115.
 (pdftex.def)             Requested size: 156.84651pt x 134.4397pt.
 <figures_new/source_activity_timeline.pdf, id=27, 245.6116pt x 101.17801pt>
 File: figures_new/source_activity_timeline.pdf Graphic file (type pdf)
 <use figures_new/source_activity_timeline.pdf>
-Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 115.
 (pdftex.def)             Requested size: 174.27509pt x 71.79056pt.
 
-Overfull \hbox (42.67912pt too wide) detected at line 116
+Overfull \hbox (42.67912pt too wide) detected at line 115
  [] 
  []
 
 
-Overfull \vbox (0.57228pt too high) detected at line 116
+Overfull \vbox (0.57228pt too high) detected at line 115
  []
 
 <figures_theme/sidebar_left.pdf, id=28, 113.4596pt x 541.48729pt>
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 116.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 115.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [2
 
  <./figures_theme/sidebar_left.pdf> <./figures_new/scenario_plot.pdf> <./figures_new/source_activity_timeline.pdf>]
 File: figures_new/scenario_plot.pdf Graphic file (type pdf)
 <use figures_new/scenario_plot.pdf>
-Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 115.
 (pdftex.def)             Requested size: 156.84651pt x 134.4397pt.
 File: figures_new/source_activity_timeline.pdf Graphic file (type pdf)
 <use figures_new/source_activity_timeline.pdf>
-Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 115.
 (pdftex.def)             Requested size: 174.27509pt x 71.79056pt.
 
-Overfull \hbox (42.67912pt too wide) detected at line 116
+Overfull \hbox (42.67912pt too wide) detected at line 115
  [] 
  []
 
 
-Overfull \vbox (0.57228pt too high) detected at line 116
+Overfull \vbox (0.57228pt too high) detected at line 115
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 116.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 115.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [3
 
 ]
 File: figures_new/scenario_plot.pdf Graphic file (type pdf)
 <use figures_new/scenario_plot.pdf>
-Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/scenario_plot.pdf  used on input line 115.
 (pdftex.def)             Requested size: 156.84651pt x 134.4397pt.
 File: figures_new/source_activity_timeline.pdf Graphic file (type pdf)
 <use figures_new/source_activity_timeline.pdf>
-Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 116.
+Package pdftex.def Info: figures_new/source_activity_timeline.pdf  used on input line 115.
 (pdftex.def)             Requested size: 174.27509pt x 71.79056pt.
 
-Overfull \hbox (42.67912pt too wide) detected at line 116
+Overfull \hbox (42.67912pt too wide) detected at line 115
  [] 
  []
 
 
-Overfull \vbox (0.57228pt too high) detected at line 116
+Overfull \vbox (0.57228pt too high) detected at line 115
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 116.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 115.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [4
 
 ]
-LaTeX Font Info:    Calculating math sizes for size <4> on input line 167.
-
-
-LaTeX Font Warning: Font shape `OT1/cmss/m/n' in size <2> not available
-(Font)              size <3> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/m/it' in size <4> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/m/it' in size <2.79999> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/m/it' in size <2> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/m/n' in size <4> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/m/n' in size <2.79999> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/m/n' in size <2> not available
-(Font)              size <5> substituted on input line 167.
-
-LaTeX Font Info:    Font shape `T1/phv/m/it' in size <4> not available
-(Font)              Font shape `T1/phv/m/sl' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/m/it' in size <2.79999> not available
-(Font)              Font shape `T1/phv/m/sl' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/m/it' in size <2> not available
-(Font)              Font shape `T1/phv/m/sl' tried instead on input line 167.
-
-LaTeX Font Warning: Font shape `OT1/cmr/bx/n' in size <2> not available
-(Font)              size <3> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/b/it' in size <4> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/b/it' in size <2.79999> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OML/cmm/b/it' in size <2> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/b/n' in size <4> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/b/n' in size <2.79999> not available
-(Font)              size <5> substituted on input line 167.
-
-
-LaTeX Font Warning: Font shape `OMS/cmsy/b/n' in size <2> not available
-(Font)              size <5> substituted on input line 167.
-
-LaTeX Font Info:    Font shape `T1/phv/bx/it' in size <4> not available
-(Font)              Font shape `T1/phv/b/it' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/b/it' in size <4> not available
-(Font)              Font shape `T1/phv/b/sl' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/bx/it' in size <2.79999> not available
-(Font)              Font shape `T1/phv/b/it' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/b/it' in size <2.79999> not available
-(Font)              Font shape `T1/phv/b/sl' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/bx/it' in size <2> not available
-(Font)              Font shape `T1/phv/b/it' tried instead on input line 167.
-LaTeX Font Info:    Font shape `T1/phv/b/it' in size <2> not available
-(Font)              Font shape `T1/phv/b/sl' tried instead on input line 167.
-
-Overfull \hbox (42.67912pt too wide) detected at line 167
+Overfull \hbox (42.67912pt too wide) detected at line 162
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 167.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 162.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [5
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 188
+Overfull \hbox (42.67912pt too wide) detected at line 162
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 188.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 162.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [6
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 252
+Overfull \hbox (42.67912pt too wide) detected at line 162
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 252.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 162.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [7
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 252
+Overfull \hbox (42.67912pt too wide) detected at line 162
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 252.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 162.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [8
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 287
+Overfull \hbox (5.24136pt too wide) in paragraph at lines 162--162
+[][] 
+ []
+
+
+Overfull \hbox (42.67912pt too wide) detected at line 162
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 287.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 162.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [9
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 311
+<figures_J3/flow_chart.png, id=107, 1464.97313pt x 405.76593pt>
+File: figures_J3/flow_chart.png Graphic file (type png)
+<use figures_J3/flow_chart.png>
+Package pdftex.def Info: figures_J3/flow_chart.png  used on input line 194.
+(pdftex.def)             Requested size: 213.39784pt x 59.10388pt.
+
+Overfull \hbox (42.67912pt too wide) detected at line 194
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 311.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 194.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [10
 
-]
-Overfull \hbox (42.67912pt too wide) detected at line 311
+ <./figures_J3/flow_chart.png>]
+File: figures_J3/flow_chart.png Graphic file (type png)
+<use figures_J3/flow_chart.png>
+Package pdftex.def Info: figures_J3/flow_chart.png  used on input line 239.
+(pdftex.def)             Requested size: 213.39784pt x 59.10388pt.
+
+Overfull \hbox (42.67912pt too wide) detected at line 239
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 311.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 239.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [11
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 338
+File: figures_J3/flow_chart.png Graphic file (type png)
+<use figures_J3/flow_chart.png>
+Package pdftex.def Info: figures_J3/flow_chart.png  used on input line 239.
+(pdftex.def)             Requested size: 213.39784pt x 59.10388pt.
+
+Overfull \hbox (42.67912pt too wide) detected at line 239
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 338.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 239.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [12
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 362
+File: figures_J3/flow_chart.png Graphic file (type png)
+<use figures_J3/flow_chart.png>
+Package pdftex.def Info: figures_J3/flow_chart.png  used on input line 281.
+(pdftex.def)             Requested size: 213.39784pt x 59.10388pt.
+
+Overfull \hbox (42.67912pt too wide) detected at line 281
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 362.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 281.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [13
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 381
+Overfull \hbox (42.67912pt too wide) detected at line 305
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 381.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 305.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [14
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 402
+Overfull \hbox (42.67912pt too wide) detected at line 305
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 402.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 305.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [15
 
 ]
-Overfull \hbox (42.67912pt too wide) detected at line 429
+Overfull \hbox (42.67912pt too wide) detected at line 332
  [] 
  []
 
 File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 429.
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 332.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [16
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 356
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 356.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[17
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 375
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 375.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[18
 
 ]
 Overfull \hbox (42.67912pt too wide) detected at line 445
@@ -1345,29 +1316,73 @@ File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
 <use figures_theme/sidebar_left.pdf>
 Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 445.
 (pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
-[17
-
-]
-Overfull \hbox (42.67912pt too wide) detected at line 462
- [] 
- []
-
-File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
-<use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 462.
-(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
-[18
-
-]
-Overfull \hbox (42.67912pt too wide) detected at line 483
- [] 
- []
-
-File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
-<use figures_theme/sidebar_left.pdf>
-Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 483.
-(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
 [19
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 445
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 445.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[20
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 466
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 466.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[21
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 493
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 493.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[22
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 509
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 509.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[23
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 526
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 526.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[24
+
+]
+Overfull \hbox (42.67912pt too wide) detected at line 547
+ [] 
+ []
+
+File: figures_theme/sidebar_left.pdf Graphic file (type pdf)
+<use figures_theme/sidebar_left.pdf>
+Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 547.
+(pdftex.def)             Requested size: 53.65668pt x 256.0748pt.
+[25
 
 ]
 \tf@nav=\write6
@@ -1384,27 +1399,22 @@ Package pdftex.def Info: figures_theme/sidebar_left.pdf  used on input line 483.
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
-
-
-LaTeX Font Warning: Size substitutions with differences
-(Font)              up to 3.0pt have occurred.
-
 Package rerunfilecheck Info: File `presentation.out' has not changed.
 (rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
  ) 
 Here is how much of TeX's memory you used:
- 31553 strings out of 474222
- 671196 string characters out of 5748733
- 1947975 words of memory out of 5000000
+ 31562 strings out of 474222
+ 671808 string characters out of 5748733
+ 1960975 words of memory out of 5000000
  53153 multiletter control sequences out of 15000+600000
- 646767 words of font info for 133 fonts, out of 8000000 for 9000
+ 622803 words of font info for 107 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  128i,15n,123p,516b,906s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmmib7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmmib8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm7.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvro8a.pfb>
-Output written on presentation.pdf (19 pages, 246484 bytes).
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmmib7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmmib8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm7.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/uhvro8a.pfb>
+Output written on presentation.pdf (25 pages, 328842 bytes).
 PDF statistics:
- 332 PDF objects out of 1000 (max. 8388607)
- 214 compressed objects within 3 object streams
- 41 named destinations out of 1000 (max. 500000)
- 327 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 376 PDF objects out of 1000 (max. 8388607)
+ 247 compressed objects within 3 object streams
+ 53 named destinations out of 1000 (max. 500000)
+ 338 words of extra memory for PDF output out of 10000 (max. 10000000)
 

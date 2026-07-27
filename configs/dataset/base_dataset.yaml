@@ -3,7 +3,7 @@
 
 data_dir: ${paths.data_dir}
 batch_size: 8
-num_workers: 4
+num_workers: 0
 seed: 777
 acc_device: "cpu"
 
