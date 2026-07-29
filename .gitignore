@@ -11,7 +11,8 @@ lightning_logs/
 wandb/
 
 # Data and Outputs (Crucial for this project)
-/data/
+/data/databases/
+/data/datasets/
 /outputs/
 /logs/
 /checkpoints/
@@ -19,6 +20,7 @@ wandb/
 /results/
 /output_audio/
 /databases/
+*.csv
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -81,3 +83,31 @@ htmlcov/
 .tox/
 docs/_build/
 src/muse_toolbox/pipelines/__pycache__/__init__.cpython-312.pyc
+
+# LaTeX auxiliary files
+*.aux
+*.bcf
+*.bbl
+*.blg
+*.brf
+*.cb
+*.cb2
+*.fdb_latexmk
+*.fls
+*.fmt
+*.fot
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.synctex.gz(busy)
+*.toc
+*.xdv
+*.xmpi

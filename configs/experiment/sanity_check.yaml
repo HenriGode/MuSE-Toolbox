@@ -2,9 +2,9 @@
 defaults:
   - override /task: source_counting
   - override /model: cosad
-  - override /dataset: pra_anf_circ_2-8ch # brudex
+  - override /dataset: pra_anf_circ_8ch # brudex
 
-  - override /model/feature_extractor: ipd
+  - override /model/feature_extractor: wgmsc
   - override /model/channel_combinator: self_attention
 
 trainer:
@@ -17,4 +17,6 @@ dataset:
   id: "J3_sanity_check"
   batch_size: 2
   num_scenarios: [4, 4, 4]
-  reset: False
+  reset: True
+  generation_config:
+    save_signal_components: True # We do not store signals components as we want to save disk space and do not need them for the source counting task

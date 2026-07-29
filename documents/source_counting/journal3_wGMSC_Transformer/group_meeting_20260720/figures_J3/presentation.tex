@@ -149,15 +149,15 @@
             \item<2-> $K \rightarrow$ \# frequencies (STFT)
             \item<3-> $C(M) \rightarrow$ \# channels 
             \item<3-> $F \rightarrow$ \# features
-            \item<5-> $S \rightarrow$ max. \# sources + 1
+            \item<5-> $S \rightarrow$ max. \# sources
             \item<5-> $\widehat{S}_t \rightarrow$ estimated source count (at time $t$)
         \end{itemize}
     \end{minipage}
 
         \vspace{1.5em}
     \begin{itemize}
-        \item<6-> \textbf{Frame-Causal Pipeline:} Processes data frame-by-frame without future lookahead.
-        \item<6-> \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, classifiers
+        \item \textbf{Frame-Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators
     \end{itemize}
 \end{frame}
 
@@ -171,7 +171,7 @@
         \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
             \includegraphics[width=0.60\textwidth]{figures_J3/flow_chart.png}
         };
-        \node<2->[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
+        \node[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
             \includegraphics[width=0.39\textwidth]{figures_J3/STFT_scenario_97.png}
         };
     \end{tikzpicture}
@@ -184,7 +184,6 @@
         \item \textbf{Signal Length:} $\SI{120}{s} \rightarrow N = \SI{960000}{samples}$ \
     \end{itemize}
     \vspace{2em}
-    \onslide<2->{
     \underline{\textbf{Short-Time Fourier Transform (STFT)}}
     \vspace{1.0em}
     \begin{itemize}
@@ -195,7 +194,6 @@
         \item \textbf{Number of frames:} $T = \lceil \frac{N_{samples}}{128} \rceil + 1 = 7501$
         \item \textbf{STFT Output:} $\mathbf{Y} \in \mathbb{C}^{M \times K \times T}$
     \end{itemize}
-    }
 \end{frame}
 
 
@@ -231,8 +229,8 @@
                   \begin{itemize}
                       \item $\bm{\xi}^{(STFT)} \in \mathbb{R}^{M \times 2K \times T}$
                       \item real \& imag (or magnitude \& phase)
-                      \item \textit{Pros:} No information loss
-                      \item \textit{Cons:} Geometry dependent and high dimensionality
+                      \item \textit{Pros:} No information loss, still contains spatial information
+                      \item \textit{Cons:} Highly dependent on geometry and very high dimensionality \\ No spatial information
                   \end{itemize}
               \vspace{1em}  
         \item \textbf{Log-Mel Features} (spectral)
@@ -331,35 +329,27 @@
 % ----------------------------------------------------------------------
 % 9. Details: Channel Combinators
 % ----------------------------------------------------------------------
-\begin{frame}{Channel Combinators}
-
-        \begin{tikzpicture}[remember picture, overlay]
-        \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
-            \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
-        };
-    \end{tikzpicture}
-
-    To process an arbitrary number of microphones $M$ (or pairs $P$) through a fixed-size classifier,
-    we must condense the spatial dimension to a fixed size $J$ (we chose $J=1$):
+\begin{frame}{Details: Channel Combinators}
+    To process an arbitrary number of microphones $M$ (or pairs $P$) through a fixed-size classifier, we must condense the spatial dimension to a fixed size $J$:
     \vspace{0.5em}
     \begin{enumerate}
         \item \textbf{Mean Pooling / Zero Padding}
               \begin{itemize}
-                  \item Simple average over $M$, or pad with zeros up to $M_{max} = 8$.
+                  \item Average over $M$, or pad with zeros up to $M_{max} = 8$.
+                  \item \textit{Baseline approach.}
               \end{itemize}
         \item \textbf{TAC Layers (Transform-Average-Concatenate)}
               \begin{itemize}
-                  \item Channel-permutation invariant approach for multi-channel processing (e.g. in source separation)
-                  \item Actually no channel combinator, just distributing global info via concatenation to each channel
+                  \item Standard invariant approach for multi-channel processing in source separation.
               \end{itemize}
         \item \textbf{Self-Attention Channel Combination}
               \begin{itemize}
                   \item Permutation-invariant attention mechanism treating channels as a sequence.
               \end{itemize}
-        % \item \textbf{Cross-Attention (Global-to-Local Context)}
-        %       \begin{itemize}
-        %           \item A global learned query vector attends to the individual local channel features.
-        %       \end{itemize}
+        \item \textbf{Cross-Attention (Global-to-Local Context)}
+              \begin{itemize}
+                  \item A global learned query vector attends to the individual local channel features.
+              \end{itemize}
     \end{enumerate}
 \end{frame}
 
@@ -372,16 +362,16 @@
             % Nodes
             \node (input) [io2] {Input $\bm{\xi}$\\ \tiny $\left[C, F, T\right]$};
             
-            \node (qproj) [process2, right of=input, node distance=2.0cm, yshift=0cm] {\textbf{Linear (Q)} \\ $F \rightarrow D$};
-            \node (kproj) [process2, above of=qproj, node distance=1.5cm] {\textbf{Linear (K)} \\ $F \rightarrow D$};
-            \node (vproj) [process2, below of=qproj, node distance=1.5cm] {\textbf{Linear (V)} \\ $F \rightarrow 1$};
+            \node (qproj) [process2, right of=input, node distance=2.4cm, yshift=0cm] {\textbf{Linear (Q)} \\ $\rightarrow D$};
+            \node (kproj) [process2, above of=qproj, node distance=1.5cm] {\textbf{Linear (K)} \\ $\rightarrow D$};
+            \node (vproj) [process2, below of=qproj, node distance=1.5cm] {\textbf{Linear (V)} \\ $\rightarrow 1$};
             
-            \node (matmul1) [investigate2, right of=qproj, node distance=2.25cm, yshift=0.75cm] {$\mathbf{Q} \mathbf{K}^T$ \\ \& Softmax};
-            \node (matmul2) [investigate2, right of=matmul1, node distance=2.25cm, yshift=-0.75cm] {$\mathbf{W}^{att} \mathbf{V}$ \\ \& Softmax};
+            \node (matmul1) [investigate2, right of=qproj, node distance=2.5cm, yshift=0.75cm] {$\mathbf{Q} \mathbf{K}^T$ \\ \& Softmax};
+            \node (matmul2) [investigate2, right of=matmul1, node distance=2.8cm, yshift=-0.75cm] {$\mathbf{W}^{att} \mathbf{V}$ \\ \& Softmax};
             
-            \node (mult) [investigate2, right of=matmul2, node distance=3.0cm, yshift=0cm] {\textbf{Weighted mean} \\ over $C$};
+            \node (mult) [investigate2, right of=matmul2, node distance=2.8cm, yshift=0cm] {\textbf{Multiply} \\ \& Sum over $C$};
             
-            \node (output) [io2, right of=mult, node distance=2.25cm] {Output $\bm{\psi}$\\ \tiny $\left[1, F, T\right]$};
+            \node (output) [io2, right of=mult, node distance=2.4cm] {Output $\bm{\psi}$\\ \tiny $\left[1, F, T\right]$};
 
             % Edges
             \draw [arrow2] (input) |- (kproj);
@@ -391,13 +381,13 @@
             \draw [arrow2] (kproj) -| node[above, near start] {\tiny $\left[C, D, T\right]$} (matmul1);
             \draw [arrow2] (qproj) -| node[below, near start] {\tiny $\left[C, D, T\right]$} (matmul1);
             
-            \draw [arrow2] (matmul1) -| node[above, near start] {$\mathbf{W}^{att}$\tiny $\left[C, C, T\right]$} (matmul2);
+            \draw [arrow2] (matmul1) -| node[above, near start] {$\mathbf{W}^{att}$ \tiny $\left[C, C, T\right]$} (matmul2);
             \draw [arrow2] (vproj) -| node[below, near start] {\tiny $\left[C, 1, T\right]$} (matmul2);
             
-            \draw [arrow2] (matmul2) -- node[above] {$\mathbf{w}$} node[below] {\tiny $\left[C, 1, T\right]$} (mult);
+            \draw [arrow2] (matmul2) -- node[above] {$\mathbf{w}$ \tiny $\left[C, 1, T\right]$} (mult);
             
             % Input bypass to Multiply
-            \draw [arrow2] (input.south) -- ++(0,-2.0) -| node[above, near start] {} (mult.south);
+            \draw [arrow2] (input.south) -- ++(0,-2.0) -| node[above, near start] {Broadcast \& Element-wise Mult.} (mult.south);
             
             \draw [arrow2] (mult) -- (output);
 
@@ -406,36 +396,51 @@
     
     \vspace{1.0em}
     \begin{itemize}
-        \item Channels treated as sequence tokens, computing attention over the spatial dimension $C$
-        \item Weighted average over $C$ via broadband weights $\mathbf{w}$
         \item \textbf{Default Parameter:} Hidden Dim ($D$) = $512$
+        \item Treats individual channels as sequence tokens, calculating attention over the spatial dimension $C$.
+        \item Final combinator weights $\mathbf{w}$ are broadcasted across the frequency dimension $F$.
     \end{itemize}
 \end{frame}
 
-
+% ----------------------------------------------------------------------
+% 10. Details: Stacking / Fusion / Conditioning
+% ----------------------------------------------------------------------
+\begin{frame}{Details: Feature Stacking, Fusion \& Conditioning}
+    \textbf{How do we unite Spatial, Spectral, and Coordinate Features?}
+    \vspace{0.5em}
+    \begin{itemize}
+        \item \textbf{Basic Stacking (Our Baseline)}
+              \begin{itemize}
+                  \item Extract features $\rightarrow$ independently condense to fixed dimensions $J_{spatial}$ and $J_{spectral}$ $\rightarrow$ concatenate along the feature dimension before passing to the classifier.
+              \end{itemize}
+              \vspace{0.5em}
+        \item \textbf{FiLM Layers (Feature-wise Linear Modulation)}
+              \begin{itemize}
+                  \item Use one feature (e.g., explicit microphone coordinates) to generate affine transformation parameters (shift and scale) applied to the acoustic features.
+              \end{itemize}
+              \vspace{0.5em}
+        \item \textbf{Attention-Based Fusion}
+              \begin{itemize}
+                  \item Cross-attention between modalities deeper in the network.
+              \end{itemize}
+    \end{itemize}
+\end{frame}
 
 % ----------------------------------------------------------------------
 % 11. Details: Source Count Estimation Classifier
 % ----------------------------------------------------------------------
-\begin{frame}{Source Count Classifier}
-
-        \begin{tikzpicture}[remember picture, overlay]
-        \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
-            \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
-        };
-    \end{tikzpicture}
-
+\begin{frame}{Details: Source Count Estimation Classifier}
     \textbf{Classification Output}
     \begin{itemize}
-        \item Max. 4 simulated sources $\rightarrow S = 5\quad\rightarrow$ (Classes: $0, 1, 2, 3, 4$)
-        \item Softmax layer across discrete source count classes
-        \item \textbf{Inference:} Frame-wise $\argmax$ of the class probabilities
+        \item Maximum simulated sources: $S = 4$.
+        \item Softmax layer across discrete source count classes.
+        \item Total Output Classes: $5$ (Counts: $0, 1, 2, 3, 4$).
+        \item \textbf{Inference:} The frame-wise source count estimate $\widehat{S}_t$ is the $\argmax$ of the class probabilities at each frame $t$.
     \end{itemize}
-    \vspace{2em}
     \textbf{Temporal Modeling Architecture}
     \begin{itemize}
-        \item \textbf{Default Model:} Causal Transformer sequence-to-sequence classifier
-        \item \textit{Alternatives:} RNN (GRU / LSTM), TCN
+        \item \textbf{Default Model:} Transformer sequence-to-sequence classifier.
+        \item \textit{Alternatives open for investigation:} Recurrent Neural Networks (RNN/GRU), Temporal Convolutional Networks (TCN), Conformers.
     \end{itemize}
     \vspace{1em}
 \end{frame}
@@ -449,12 +454,12 @@
         \begin{tikzpicture}
             % Nodes
             \node (input) [io2] {Input $\bm{\psi}$\\ \tiny $\left[F, T\right]$};
-            \node (norm) [process2, right of=input, node distance=2cm] {\textbf{LayerNorm}};
-            \node (chunk) [process2, right of=norm, node distance=2cm] {\textbf{Causal} \\ \textbf{Chunking}};
-            \node (bottleneck) [process2, right of=chunk, node distance=3.0cm] {\textbf{Bottleneck} \\ Conv1D};
+            \node (norm) [process2, right of=input, node distance=2.2cm] {\textbf{LayerNorm}};
+            \node (chunk) [process2, right of=norm, node distance=2.5cm] {\textbf{Causal} \\ \textbf{Chunking}};
+            \node (bottleneck) [process2, right of=chunk, node distance=2.8cm] {\textbf{Bottleneck} \\ Conv1D};
             \node (posenc) [process2, right of=bottleneck, node distance=2.5cm] {\textbf{Positional} \\ \textbf{Encoding}};
             
-            \node (transformer) [investigate2, below of=bottleneck, node distance=2.0cm, minimum width=4cm] {\textbf{$N\times$ Transformer Block} \\ MHA (Causal) + FF};
+            \node (transformer) [investigate2, below of=bottleneck, node distance=2.0cm, minimum width=4cm] {\textbf{$N\times$ Transformer Layer} \\ MHA (Causal) + FF};
             
             \node (output_conv) [process2, left of=transformer, node distance=4.3cm] {\textbf{Output} \\ Conv1D};
             \node (output) [io2, left of=output_conv, node distance=2.3cm] {Logits\\ \tiny $\left[S, T\right]$};
@@ -462,7 +467,7 @@
             % Edges
             \draw [arrow2] (input) -- (norm);
             \draw [arrow2] (norm) -- (chunk);
-            \draw [arrow2] (chunk) -- node[above] {\tiny $\left[F(T_C+1), T\right]$} (bottleneck);
+            \draw [arrow2] (chunk) -- node[above] {\tiny $\left[F(C+1), T\right]$} (bottleneck);
             \draw [arrow2] (bottleneck) -- node[above] {\tiny $\left[E, T\right]$} (posenc);
             \draw [arrow2] (posenc) |- (transformer);
             \draw [arrow2] (transformer) -- node[above] {\tiny $\left[E, T\right]$} (output_conv);
@@ -484,7 +489,7 @@
             \vspace{1.2em}
             \begin{itemize}
                 \item FF Inner Dim: $1024$
-                \item Causal Chunk Size ($T_C$): $7$
+                \item Causal Chunk Size ($C$): $7$
                 \item Dropout: $0.2$
             \end{itemize}
         \end{column}
@@ -517,11 +522,11 @@
             % \draw [arrow2] (stft) -- (feature);
             \draw [arrow2] (stft) |- node[above, pos = 0.85] {$\mathbf{Y}$} node[below, pos = 0.85] {\tiny $\left[M, 2K, T\right]$} (feature2);
             % \draw [arrow2] (stft) |- (feature2);
-            % \draw<2-> [arrow2, dashed] (feature) -- (chcombiner2);
-            % \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner);
+            \draw<2-> [arrow2, dashed] (feature) -- (chcombiner2);
+            \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner);
             \draw [arrow2] (feature) -- node[above] {$\bm{\xi}_1$} node[below] {\tiny $\left[C_1(M),F_1,T\right]$} (chcombiner);
             \draw [arrow2] (feature2) -- (chcombiner2);
-            % \path<1-> (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (chcombiner2);
+            \path<1-> (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (chcombiner2);
             \draw [arrow2] (chcombiner) -| node[above, pos=0.15] {$\bm{\psi}_1$} node[below, pos=0.15] {\tiny $\left[F_1,T\right]$} (stacker);
             \draw [arrow2] (chcombiner2) -- node[above] {$\bm{\psi}_2$} node[below] {\tiny $\left[F_2,T\right]$} (stacker);
             \draw [arrow2] (stacker) -- node[above] {$\bm{\psi}$} node[below] {\tiny $\left[F,T\right]$} (dnn);
@@ -544,24 +549,10 @@
             };
         \end{tikzpicture}
     \end{center}
-    \vspace{-5em}
-    \textbf{How do we combine spatial \& spectral features?}
-    \vspace{0.5em}
+    \vspace{1.5em}
     \begin{itemize}
-        \item \textbf{Basic Stacking (Our Baseline)}
-            %   \begin{itemize}
-            %       \item Apply channel combinator individually on multiple features and concatenate the feature dimension
-            %   \end{itemize}
-              \vspace{0.5em}
-        \item \textbf{FiLM Layers (Feature-wise Linear Modulation)}
-            %   \begin{itemize}
-            %       \item One feature generates affine transformation (shift and scale) applied to the other feature
-            %   \end{itemize}
-              \vspace{0.5em}
-        \item \textbf{Attention-Based Fusion}
-            %   \begin{itemize}
-            %       \item Use cross-attention between modalities
-            %   \end{itemize}
+        \item \textbf{Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, and fusion schemes.
     \end{itemize}
 \end{frame}
 
@@ -629,15 +620,15 @@
             % \draw [arrow2] (stft) -- (feature);
             \draw [arrow2] (stft) |- node[above, pos = 0.85] {$\mathbf{Y}$} node[below, pos = 0.85] {\tiny $\left[M, 2K, T\right]$} (feature2);
             % \draw [arrow2] (stft) |- (feature2);
-            % \draw<1-> [arrow2, dashed] (feature) -- (chcombiner2);
-            % \draw<1-> [arrow2, dashed] (feature) -- (chcombiner3);
-            % \draw<1-> [arrow2, dashed] (feature2) -- (chcombiner);
-            % \draw<1-> [arrow2, dashed] (feature2) -- (chcombiner3);
-            % \draw<1-> [arrow2, dashed] (feature3) -- (chcombiner2);
-            % \draw<1-> [arrow2, dashed] (feature3) -- (chcombiner);
+            \draw<2-> [arrow2, dashed] (feature) -- (chcombiner2);
+            \draw<2-> [arrow2, dashed] (feature) -- (chcombiner3);
+            \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner);
+            \draw<2-> [arrow2, dashed] (feature2) -- (chcombiner3);
+            \draw<2-> [arrow2, dashed] (feature3) -- (chcombiner2);
+            \draw<2-> [arrow2, dashed] (feature3) -- (chcombiner);
             \draw [arrow2] (feature) -- node[above] {$\bm{\xi}_1$} node[below] {\tiny $\left[C_1(M),F_1,T\right]$} (chcombiner);
             \draw [arrow2] (feature2) -- (chcombiner2);
-            % \path<1> (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (chcombiner2);
+            \path<1> (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (chcombiner2);
             \draw [arrow2] (feature3) -- node[above] {$\bm{\xi}_3$} node[below] {\tiny $\left[C_3(M),F_3\right]$} (chcombiner3);
             \draw [arrow2] (chcombiner) -| node[above, pos=0.15] {$\bm{\psi}_1$} node[below, pos=0.15] {\tiny $\left[F_1,T\right]$} (stacker);
             \draw [arrow2] (chcombiner2) -- node[above] {$\bm{\psi}_2$} node[below] {\tiny $\left[F_2,T\right]$} (stacker);
@@ -662,14 +653,10 @@
             };
         \end{tikzpicture}
     \end{center}
-    \vspace{0.5em}
+    \vspace{1.5em}
     \begin{itemize}
-        \item \textbf{Geometry Conditioning:} 
-        \begin{itemize}
-            \item Additional time-independent feature vector 
-            \item Early spatial feature modulation (before channel combinator)
-            \item Late fusion into the classifier architecture
-        \end{itemize}
+        \item \textbf{Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, and fusion schemes.
     \end{itemize}
 \end{frame}
 
@@ -760,32 +747,7 @@
         \item \textbf{Source Dynamics:} Random activations/deactivations every $[1, 10]$ s
     \end{itemize}
     \vspace{1em}
-    \textbf{Ground Truth}
-    \begin{itemize}
-        \item VAD with $\SI{-30}{\dB}$ power threshold and neglecting activation gabs up to $\SI{1}{\s}$
-        \item Activity labels: $a_{s,t} \in \{0,1\}$ for each source $s$ and frame $t$
-        \item Source count: $S_t = \sum_{s=1}^{S_{max}} a_{s,t}$
-    \end{itemize}   
-\end{frame}
-
-% ----------------------------------------------------------------------
-% Results (Transformer)
-% ----------------------------------------------------------------------
-\begin{frame}{Part 0 - Results: Transformer Architecture}
-    \begin{figure}
-        \centering
-        \includegraphics[width=\textwidth,height=0.8\textheight,keepaspectratio]{figures_J3/results_visualization_transformer.png}
-    \end{figure}
-\end{frame}
-
-% ----------------------------------------------------------------------
-% Results (GRU)
-% ----------------------------------------------------------------------
-\begin{frame}{Part 0 - Results: GRU Architecture}
-    \begin{figure}
-        \centering
-        \includegraphics[width=\textwidth,height=0.8\textheight,keepaspectratio]{figures_J3/results_visualization_gru.png}
-    \end{figure}
+    \textit{(Open for discussion: Should we scale training up to 4800 scenarios for final production?)}
 \end{frame}
 
 % ----------------------------------------------------------------------
@@ -793,13 +755,13 @@
 % ----------------------------------------------------------------------
 \begin{frame}{Summary}
     \begin{itemize}
-        \item \textbf{The Goal:} A frame-causal, online source count estimator robust to unseen array configurations.
-        \item \textbf{The Architecture:} A STFT-based pipeline processing features via channel combinators and a transformer sequence classifier.
+        \item \textbf{The Goal:} A causal, real-time source count estimator robust to unknown array configurations.
+        \item \textbf{The Architecture:} A highly modular STFT-based pipeline processing heterogeneous features through specific channel combinators into a Transformer sequence classifier.
         \item \textbf{The Roadmap:}
               \begin{itemize}
                   \item \textbf{Part 0:} Confirm benefit of combined spatial + spectral features.
-                  \item \textbf{Part 1 ($4\times4$ matrix):} Quantify performance degradation on unseen arrays across Circular/Random geometries and fixed/variable number of microphones.
-                  \item \textbf{Part 2:} Evaluate microphone array geometry conditioning to improve generalization on unseen arrays.
+                  \item \textbf{Part 1 ($4\times4$ matrix):} Quantify performance degradation on unseen arrays across Circular/Random and Fixed/Variable constraints.
+                  \item \textbf{Part 2:} Inject explicit array coordinate conditioning to recover performance on generalization tasks.
               \end{itemize}
     \end{itemize}
     \vspace{2em}

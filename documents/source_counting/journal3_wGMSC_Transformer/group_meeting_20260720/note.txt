@@ -1,0 +1,29 @@
+also compare to coherence features which are pairwise similar to IPD 
+
+right now in the channel combiantor for t is independent
+
+for the attention make sure you understand and explain well the dependance on sequence length and also how causality works
+
+do channel combination behind the transformer architeture and use TAC in between the transformer blocks to do often fusion of channels
+
+
+for the geometry conditiong train with a little bit of error of positions to be robust
+
+time between evetns 100ms
+
+
+oracle ground truth gap time between 0ms and 200ms 
+
+
+I need to compare to spectral features single channel!
+
+
+source power different to [0, 5]
+
+distance to the array check those
+
+do the general architecture optimization only on circ 8ch
+
+
+learned from marvins paper:
+i do not need 4 datasets i can just creat 2 datasets (circ and random) with 8ch each, and for the others i can just use them with less (2ch-8ch) microphones selected from the 8ch.
