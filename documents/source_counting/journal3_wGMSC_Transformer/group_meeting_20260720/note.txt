@@ -1,6 +1,6 @@
 also compare to coherence features which are pairwise similar to IPD 
 
-right now in the channel combiantor for t is independent
+right now in the channel combiantor for t is independent but you could introduce chankung similar to the transformer
 
 for the attention make sure you understand and explain well the dependance on sequence length and also how causality works
 
