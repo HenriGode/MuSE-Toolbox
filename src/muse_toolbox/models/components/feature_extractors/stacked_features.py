@@ -99,6 +99,12 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
             "extractors": [e.get_config() for e in self._extractors],
         }
 
+    def get_valid_feature_mask(self, valid_mics_count: torch.Tensor | None, max_M: int) -> torch.Tensor | None:
+        if not self.extractors: return None
+        # Stacked features require all extractors to have the exact same Mproc dimension. <- That is False and we have to correct this !!!
+        # Thus, the output channel mask should be identical for all of them.
+        return self.extractors[0].get_valid_feature_mask(valid_mics_count, max_M)
+
     @property
     def precompute_type(self) -> str | None:
         return "features"
@@ -135,7 +141,7 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
         else:
             raise ValueError(f"Invalid input_type: {input_type}")
 
-    def forward_raw_audio(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_raw_audio(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         outputs = []
         for extractor in self._extractors:
             outputs.append(extractor.forward_raw_audio(batch))
@@ -147,7 +153,7 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
 
         return torch.cat(outputs, dim=-2)
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         outputs = []
         for extractor in self._extractors:
             if extractor.uses_stft:

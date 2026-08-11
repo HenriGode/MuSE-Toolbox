@@ -13,7 +13,7 @@ from muse_toolbox.utils.system import memory
 log = logging.getLogger(__name__)
 
 
-class STFTtransform:
+class STFTtransform(torch.nn.Module):
     """
     Short-Time Fourier Transform (STFT) Framework for encoding and decoding signals.
 
@@ -61,42 +61,43 @@ class STFTtransform:
         self.num_freq_bins = (
             self.nfft // 2 + 1 - int(self.remove_DC) - int(self.remove_Nyquist)
         )
+        super().__init__()
 
         # Generate window function
         if isinstance(window_type, str):
             if window_type == "hann":
-                self.window = torch.hann_window(
+                window = torch.hann_window(
                     self.nfft,
                     periodic=True,
                     dtype=torch.get_default_dtype(),
                 )
             elif window_type == "sqrt-hann":
-                self.window = torch.hann_window(
+                window = torch.hann_window(
                     self.nfft,
                     periodic=True,
                     dtype=torch.get_default_dtype(),
                 ).sqrt()
             elif window_type == "hamming":
-                self.window = torch.hamming_window(
+                window = torch.hamming_window(
                     self.nfft,
                     periodic=True,
                     dtype=torch.get_default_dtype(),
                 )
             elif window_type == "bartlett":
-                self.window = torch.bartlett_window(
+                window = torch.bartlett_window(
                     self.nfft,
                     periodic=True,
                     dtype=torch.get_default_dtype(),
                 )
             elif window_type == "blackman":
-                self.window = torch.blackman_window(
+                window = torch.blackman_window(
                     self.nfft,
                     periodic=True,
                     dtype=torch.get_default_dtype(),
                 )
             else:
                 try:
-                    self.window = eval(
+                    window = eval(
                         window_type,
                         {
                             "x": self.nfft,
@@ -109,15 +110,17 @@ class STFTtransform:
                     log.error(f"Failed to evaluate window type string: {e}")
                     raise ValueError("unknown window type!") from e
         elif callable(window_type):
-            self.window = window_type(
+            window = window_type(
                 self.frame_length,
                 periodic=True,
                 dtype=torch.get_default_dtype(),
             )
         elif type(window_type) is torch.Tensor:
-            self.window = window_type
+            window = window_type
         else:
             raise NotImplementedError("Window type must be str, callable, or torch.Tensor.")
+            
+        self.register_buffer("window", window)
             
         log.debug(f"Initialized STFTtransform: {self.signature}")
 
@@ -169,7 +172,7 @@ class STFTtransform:
             signal.reshape(-1, *orig_shape[-1:]),
             self.nfft,
             hop_length=self.hop_length,
-            window=self.window.to(signal.device),
+            window=self.window,#.to(signal.device),
             center=True,
             onesided=True,
             return_complex=True,
@@ -232,7 +235,7 @@ class STFTtransform:
                 stft_signal.reshape(-1, *orig_shape[-2:]),
                 self.nfft,
                 hop_length=self.hop_length,
-                window=self.window.to(stft_signal.device),
+                window=self.window,#.to(stft_signal.device),
                 center=True,
                 onesided=True,
                 return_complex=False,
@@ -244,7 +247,7 @@ class STFTtransform:
                         stft_sig,
                         self.nfft,
                         hop_length=self.hop_length,
-                        window=self.window.to(stft_signal.device),
+                        window=self.window,#.to(stft_signal.device),
                         center=True,
                         onesided=True,
                         return_complex=False,

@@ -47,7 +47,7 @@ class AverageChannelCombinator(BaseChannelCombinator):
     def get_config(self) -> dict[str, Any]:
         return {"name": self.__class__.__name__}
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Averages across the channel dimension (dim=1) while keeping the dimension.
         Shape: (B, C, F, T) -> (B, 1, F, T)
@@ -76,7 +76,23 @@ class SelectChannelCombinator(BaseChannelCombinator):
             "ref_channel": self.ref_channel,
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
+        """
+        Selects the specified reference channel.
+        Shape: (B, C, F, T) -> (B, 1, F, T)
+        """
+        # slice to keep the channel dimension
+        return x[:, self.ref_channel : self.ref_channel + 1, :, :]
+    def is_trainable(self) -> bool:
+        return False
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "name": self.__class__.__name__,
+            "ref_channel": self.ref_channel,
+        }
+
+    def forward_(self, x: torch.Tensor, feature_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Selects the specified reference channel.
         Shape: (B, C, F, T) -> (B, 1, F, T)

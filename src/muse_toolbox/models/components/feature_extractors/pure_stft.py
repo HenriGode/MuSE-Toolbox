@@ -45,7 +45,7 @@ class PureSTFTFeatureExtractor(BaseFeatureExtractor):
         """The output feature dimension is 2 * F (real and imaginary parts)."""
         return self.transform.num_freq_bins * 2
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward pass for the pure STFT feature extractor.
         

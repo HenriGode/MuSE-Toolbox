@@ -111,3 +111,5 @@ src/muse_toolbox/pipelines/__pycache__/__init__.cpython-312.pyc
 *.toc
 *.xdv
 *.xmpi
+
+documents/source_counting/literature

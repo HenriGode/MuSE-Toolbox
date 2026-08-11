@@ -56,6 +56,11 @@ class MSE(BaseMetric):
         if self.requires_reference and targets is None:
             return
 
+        if isinstance(preds, torch.Tensor):
+            preds = [preds]
+        if isinstance(targets, torch.Tensor):
+            targets = [targets]
+
         pred_counts = [torch.argmax(p, dim=-1) for p in preds]
         true_counts = targets
 

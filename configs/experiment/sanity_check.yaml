@@ -2,7 +2,7 @@
 defaults:
   - override /task: source_counting
   - override /model: cosad
-  - override /dataset: pra_anf_circ_8ch # brudex
+  - override /dataset: ami # pra_anf_circ_8ch # brudex
 
   - override /model/feature_extractor: wgmsc
   - override /model/channel_combinator: self_attention
@@ -14,9 +14,18 @@ trainer:
   limit_test_batches: 2
 
 dataset:
-  id: "J3_sanity_check"
+  # We must provide these dummy variables because BaseDataModule strictly requires them in its __init__,
+  # even though AMIDataModule (for real-world data) overrides prepare_data() and ignores them.
+  id: "ami_sanity_check"
   batch_size: 2
   num_scenarios: [4, 4, 4]
   reset: True
   generation_config:
-    save_signal_components: True # We do not store signals components as we want to save disk space and do not need them for the source counting task
+    save_signal_components: True 
+  steps_per_epoch: 2
+  train_meetings: ["EN2001a"]
+  val_meetings: ["EN2001a"]
+  test_meetings: ["EN2001a"]
+  augmentation:
+    enabled: True
+    prob_augmentation: 0.333

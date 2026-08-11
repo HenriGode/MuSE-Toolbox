@@ -65,7 +65,7 @@ class GMSC_Feature_Extractor(BaseFeatureExtractor):
             "smoothing_time_constant": self.smoothing_time_constant,
         }
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Args:
             batch (torch.Tensor): STFT signal (B, M, F, T) complex.

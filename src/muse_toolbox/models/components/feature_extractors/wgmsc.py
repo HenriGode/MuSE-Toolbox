@@ -98,10 +98,13 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
     @property
     def feature_dim(self) -> int:
         num_freq_bins = self.transform.num_freq_bins
-        dim = 1 if self.wideband_features else num_freq_bins
-        if self.rev_features:
-            dim *= 2
-        return dim
+        if self.wideband_features:
+            return 2 if self.rev_features else 1
+        return 2 * num_freq_bins if self.rev_features else num_freq_bins
+
+    def get_valid_feature_mask(self, valid_mics_count: torch.Tensor | None, max_M: int) -> torch.Tensor | None:
+        if valid_mics_count is None: return None
+        return torch.ones((valid_mics_count.shape[0], 1), dtype=torch.bool, device=valid_mics_count.device)
 
     @property
     def is_trainable(self) -> bool:
@@ -126,7 +129,7 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
             "wideband_features": self.wideband_features,
         }
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Performs the forward pass to compute WGMSC from a multi-channel mixture.
 
@@ -150,13 +153,13 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
         # Prepare Output -> (B, Mproc, Fproc, T)
         if self.wideband_features:
             wgmsc_wideband = self._combine_frequencies(wgmsc_narrowband, Rw) # (B, 1, T, 1, 1)
-            fwd = wgmsc_wideband[..., 0, 0].unsqueeze(2)  # (B, 1, T) -> (B, 1, 1, T)
+            fwd = wgmsc_wideband[..., 0, 0].unsqueeze(1)  # (B, 1, T) -> (B, 1, 1, T)
             if self.rev_features:
                 wgmsc_wideband_rev = self._combine_frequencies(
                     wgmsc_narrowband_rev, Rw_rev
                 )
-                rev = wgmsc_wideband_rev[..., 0, 0].unsqueeze(2)  # (B, 1, T) -> (B, 1, 1, T)
-                output = torch.cat([fwd, rev], dim=1)  # (B, 2, 1, T)
+                rev = wgmsc_wideband_rev[..., 0, 0].unsqueeze(1)  # (B, 1, T) -> (B, 1, 1, T)
+                output = torch.cat([fwd, rev], dim=-2)  # (B, 1, 2, T)
             else:
                 output = fwd  # (B, 1, 1, T)
         else:

@@ -122,6 +122,11 @@ class TolerantEventF1(BaseMetric):
             meta (dict): Dictionary with scenario metadata.
             dataloader_idx (int): Current dataloader index.
         """
+        if isinstance(preds, torch.Tensor):
+            preds = [preds]
+        if isinstance(targets, torch.Tensor):
+            targets = [targets]
+
         pred_counts = [torch.argmax(p, dim=-1) for p in preds]
 
         for pred_count, target in zip(pred_counts, targets):

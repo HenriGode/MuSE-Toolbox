@@ -44,7 +44,7 @@ class SelfAttentionChannelCombinator(BaseChannelCombinator):
             "hidden_dim": self.hidden_dim,
         }
 
-    def forward_(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_(self, x: torch.Tensor, feature_mask: torch.Tensor) -> torch.Tensor:
         """
         Forward pass.
         
@@ -136,7 +136,7 @@ class CrossAttentionChannelCombinator(BaseChannelCombinator):
             "hidden_dim": self.hidden_dim,
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward pass.
         

@@ -104,7 +104,7 @@ class STFT_Conv_Feature_Encoder(BaseFeatureExtractor):
     def feature_dim(self) -> int:
         return self.out_channels_dim
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Args:
             batch: (B, M, F, T) Complex tensor

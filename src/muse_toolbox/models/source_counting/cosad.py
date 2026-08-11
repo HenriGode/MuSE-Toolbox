@@ -1,5 +1,6 @@
 import logging
 from typing import Any
+import torch
 
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
@@ -186,20 +187,67 @@ class COSADmodule(BaseLitModel):
         batch.apply_source_count_estimator(self.source_count_estimator)
         return batch
 
-    def predict_step(
-        self, batch: HeterogeneousBatch, batch_idx: int, dataloader_idx: int = 0
-    ) -> HeterogeneousBatch:
+    def forward_dict(self, batch: dict) -> dict:
         """
-        Executes a single prediction step and performs argmax on the estimates.
+        Executes the forward pass of the COSAD pipeline using raw dictionary batches.
+        """
+        x = batch["input"]
+        valid_mics = batch.get("mic_lengths", None)
+        
+        # 0. Data Augmentation
+        if self.permute_channels:
+            B, M, T = x.shape
+            for i in range(B):
+                m_len = valid_mics[i].item() if valid_mics is not None else M
+                if m_len > 1:
+                    perm = torch.randperm(m_len, device=x.device)
+                    x[i, :m_len, :] = x[i, perm, :]
+
+        # 1. Feature Extraction
+        # Note: the feature extractor is responsible for calling self.transform() internally if it uses STFT.
+        features = self.feature_extractor(x, valid_mics=valid_mics)
+        
+        # 1.5 Generate Valid Feature Mask
+        feature_mask = self.feature_extractor.get_valid_feature_mask(valid_mics, max_M=x.shape[1])
+        batch["feature_mask"] = feature_mask
+        
+        # 2. Channel Combination (Optional)
+        if self.channel_combinator is not None:
+            features = self.channel_combinator(features, feature_mask=feature_mask)
+
+        # 3. Detection
+        estimates = self.source_count_estimator(features)
+        
+        return {
+            "estimates": estimates,
+            "time_lengths": batch["time_lengths"],
+            "meta": batch["meta"]
+        }
+
+    def predict_step(
+        self, batch: dict | HeterogeneousBatch, batch_idx: int, dataloader_idx: int = 0
+    ) -> dict | HeterogeneousBatch:
+        """
+        Executes a prediction step.
+
+        Computes the forward pass and returns the processed batch, ensuring 
+        estimates are condensed to binary discrete decisions if configured.
 
         Args:
-            batch (HeterogeneousBatch): The prediction batch.
-            batch_idx (int): The index of the batch.
+            batch: The batch of data to process.
+            batch_idx (int): The index of the current batch.
             dataloader_idx (int): The index of the dataloader.
 
         Returns:
-            HeterogeneousBatch: The batch with discretized (argmax) source count estimates.
+            processed_batch: The processed batch, ready for evaluation.
         """
-        predictions = super().predict_step(batch, batch_idx, dataloader_idx)
-        predictions.estimates = [est.argmax(dim=-1) for est in predictions.estimates]
+        predictions = self(batch)
+        if isinstance(predictions, dict):
+            est = predictions["estimates"]
+            if est is not None:
+                predictions["estimates"] = torch.argmax(est, dim=-1, keepdim=True)
+        else:
+            est = predictions.estimates
+            if est is not None:
+                predictions.estimates = torch.argmax(est, dim=-1, keepdim=True)
         return predictions

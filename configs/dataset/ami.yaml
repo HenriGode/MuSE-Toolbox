@@ -1,3 +1,6 @@
+defaults:
+  - base_dataset
+
 _target_: muse_toolbox.data.datamodules.ami.AMIDataModule
 
 # Base paths
@@ -5,8 +8,15 @@ data_dir: ${paths.data_dir}/databases/ami
 
 # Ground truth parser strategy (Strategy Pattern)
 label_parser:
-  _target_: muse_toolbox.data.databases.ami_label_parsers.AMISegmentsXMLParser
+  _target_: muse_toolbox.data.databases.ami_label_parsers.AMIWordsXMLParser
   data_dir: ${dataset.data_dir}
+  sampling_frequency: ${dataset.sampling_frequency}
+
+database:
+  _target_: muse_toolbox.data.databases.ami.AMIDatabase
+  data_dir: ${dataset.data_dir}
+  sampling_frequency: ${dataset.sampling_frequency}
+  label_parser: ${dataset.label_parser}
 
 # Chunking and Inference Parameters
 chunk_length_s: 7.0
@@ -16,15 +26,19 @@ steps_per_epoch: 5000
 # Single Speaker Data Augmentation Config
 augmentation:
   enabled: true
+  prob_augmentation: 0.333
   prob_1spk: 0.1
-  prob_2spk: 0.4
+  prob_2spk: 0.2
   prob_3spk: 0.3
-  prob_4spk: 0.2
+  prob_4spk: 0.4
 
 # Arrays to load
 arrays:
   - Array1
   - Array2
+
+generation_config:
+  max_sources: 4
 
 # Official AMI Scenario-Only Split
 train_meetings:
@@ -92,15 +106,6 @@ train_meetings:
   - ES2016b
   - ES2016c
   - ES2016d
-  - IB4001
-  - IB4002
-  - IB4003
-  - IB4004
-  - IB4005
-  - IB4006
-  - IB4007
-  - IB4010
-  - IB4011
   - IN1001
   - IN1002
   - IN1005
@@ -119,7 +124,6 @@ train_meetings:
   - IS1001b
   - IS1001c
   - IS1001d
-  - IS1002a
   - IS1002b
   - IS1002c
   - IS1002d
@@ -131,6 +135,9 @@ train_meetings:
   - IS1004b
   - IS1004c
   - IS1004d
+  - IS1005a
+  - IS1005b
+  - IS1005c
   - IS1006a
   - IS1006b
   - IS1006c
@@ -139,10 +146,6 @@ train_meetings:
   - IS1007b
   - IS1007c
   - IS1007d
-  - IS1008a
-  - IS1008b
-  - IS1008c
-  - IS1008d
   - TS3005a
   - TS3005b
   - TS3005c
@@ -175,52 +178,39 @@ train_meetings:
   - TS3012b
   - TS3012c
   - TS3012d
-
 val_meetings:
-  - EN2001c
-  - EN2003b
-  - EN2003c
-  - EN2004b
-  - EN2004c
-  - EN2005b
-  - EN2005c
-  - ES2004a
-  - ES2004b
-  - ES2004c
-  - ES2004d
   - ES2011a
   - ES2011b
   - ES2011c
   - ES2011d
-  - IB4008
-  - IB4009
-  - IN1003
-  - IN1004
-  - IN1006
-  - IS1005a
-  - IS1005b
-  - IS1005c
-  - IS1009a
-  - IS1009b
-  - IS1009c
-  - IS1009d
-
+  - IB4001
+  - IB4002
+  - IB4003
+  - IB4004
+  - IB4010
+  - IB4011
+  - IS1008a
+  - IS1008b
+  - IS1008c
+  - IS1008d
+  - TS3004a
+  - TS3004b
+  - TS3004c
+  - TS3004d
 test_meetings:
   - EN2002a
   - EN2002b
   - EN2002c
   - EN2002d
-  - EN2004d
-  - EN2005d
-  - ES2016a
-  - ES2016b
-  - ES2016c
-  - ES2016d
-  - IS1008a
-  - IS1008b
-  - IS1008c
-  - IS1008d
-  - IN1012
-  - IN1013
-  - IN1014
-  - IN1016
+  - ES2004a
+  - ES2004b
+  - ES2004c
+  - ES2004d
+  - IS1009a
+  - IS1009b
+  - IS1009c
+  - IS1009d
+  - TS3003a
+  - TS3003b
+  - TS3003c
+  - TS3003d

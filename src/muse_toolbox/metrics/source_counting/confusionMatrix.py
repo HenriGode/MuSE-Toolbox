@@ -51,11 +51,15 @@ class ConfusionMatrix(BaseMetric):
         if self.requires_reference and targets is None:
             return
 
-        pred_one_hot = torch.cat(preds).permute(0, 1)
-        true_counts = torch.cat(targets)
-
-        # The metric expects (N, C, ...) for preds and (N, ...) for target.
-        # Your inputs are (B, T, C) and (B, T), which is incompatible, so we permute preds.
+        if isinstance(preds, list):
+            pred_one_hot = torch.cat(preds).permute(0, 1)
+        else:
+            pred_one_hot = preds.permute(0, 1) if preds.dim() == 3 else preds
+            
+        if isinstance(targets, list):
+            true_counts = torch.cat(targets)
+        else:
+            true_counts = targets
         self.conf_matrix_metric.update(pred_one_hot.cpu(), true_counts.cpu())
 
     def compute(self) -> dict:

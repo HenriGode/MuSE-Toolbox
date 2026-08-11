@@ -72,3 +72,42 @@ class AMISegmentsXMLParser(BaseAMILabelParser):
             log.warning(f"No segment annotations found for meeting {meeting_id}")
             
         return sad_samples
+
+class AMIWordsXMLParser(BaseAMILabelParser):
+    """Parses the official words.xml files for high-precision word-level speech activity."""
+    
+    def get_sad_samples(self, meeting_id: str, total_samples: int) -> dict[str, torch.Tensor]:
+        words_dir = self.data_dir / "Annotations" / "words"
+        
+        sad_samples = {}
+        for speaker_id in ["A", "B", "C", "D", "E"]:
+            xml_file = words_dir / f"{meeting_id}.{speaker_id}.words.xml"
+            if not xml_file.exists():
+                continue
+                
+            speaker_activity = torch.zeros(total_samples, dtype=torch.bool)
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
+            
+            # We only consider <w> tags (words) as speech
+            for word in root.findall('.//*'):
+                if word.tag.endswith('w') or word.tag == 'w':
+                    if 'starttime' in word.attrib and 'endtime' in word.attrib:
+                        start_s = float(word.attrib['starttime'])
+                        end_s = float(word.attrib['endtime'])
+                        
+                        start_idx = int(start_s * self.fs)
+                        end_idx = int(end_s * self.fs)
+                        
+                        start_idx = max(0, min(start_idx, total_samples - 1))
+                        end_idx = max(0, min(end_idx, total_samples))
+                        
+                        if start_idx < end_idx:
+                            speaker_activity[start_idx:end_idx] = True
+            
+            sad_samples[speaker_id] = speaker_activity
+            
+        if not sad_samples:
+            log.warning(f"No word annotations found for meeting {meeting_id}")
+            
+        return sad_samples

@@ -121,6 +121,7 @@ class BaseFeatureExtractor(nn.Module, ABC):
         self,
         batch: torch.Tensor | dict[str, torch.Tensor],
         input_type: str = "raw_audio",
+        valid_mics: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Dispatch method to process input based on its type.
@@ -138,17 +139,17 @@ class BaseFeatureExtractor(nn.Module, ABC):
                 batch = batch.unsqueeze(0)
 
         if input_type == "raw_audio" and isinstance(batch, torch.Tensor):
-            out = self.forward_raw_audio(batch)
+            out = self.forward_raw_audio(batch, valid_mics=valid_mics)
         elif (
             input_type == "stft" and self.uses_stft and isinstance(batch, torch.Tensor)
         ):
             # STFT natively has shape (..., F, M, T). Transpose to (..., M, F, T).
             batch = batch.transpose(-2, -3)
-            out = self.forward_stft(batch)
+            out = self.forward_stft(batch, valid_mics=valid_mics)
         elif input_type == "features" and isinstance(batch, torch.Tensor):
-            out = self.forward_precomputed_features(batch)
+            out = self.forward_precomputed_features(batch, valid_mics=valid_mics)
         elif input_type == "features" and isinstance(batch, dict):
-            out = self.forward_precomputed_features_dict(batch)
+            out = self.forward_precomputed_features_dict(batch, valid_mics=valid_mics)
         else:
             raise ValueError(
                 f"Invalid input_type '{input_type}' for feature extractor"
@@ -160,24 +161,24 @@ class BaseFeatureExtractor(nn.Module, ABC):
             
         return out
 
-    def forward_raw_audio(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_raw_audio(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """Compute features from raw audio tensor (B, M, N)."""
         if isinstance(batch, dict):
             raise NotImplementedError(
                 "BaseFeatureExtractor does not support dictionary input for raw audio by default."
             )
-        if isinstance(self.transform, STFTtransform):
+        if isinstance(self.transform, STFTtransform) and self.uses_stft:
             stft_audio = self.transform.encode(batch)
             # STFT natively has shape (..., F, M, T). Transpose to (..., M, F, T).
             stft_audio = stft_audio.transpose(-2, -3)
-            return self.forward_stft(stft_audio)
+            return self.forward_stft(stft_audio, valid_mics=valid_mics)
         else:
             raise NotImplementedError(
                 "forward_raw_audio method is not implemented for feature extractors that do not use STFT."
             )
         pass
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """Compute features from STFT tensor (B, M, F, T)."""
         if self.uses_stft:
             raise NotImplementedError(
@@ -187,7 +188,7 @@ class BaseFeatureExtractor(nn.Module, ABC):
             "forward_stft method is not implemented for this feature extractor since it does not use STFT."
         )
 
-    def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_precomputed_features(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         """
         Pass-through features tensor (B, J, T).
         Can be overridden by trainable feature extractors to apply the trainable part.
@@ -199,11 +200,32 @@ class BaseFeatureExtractor(nn.Module, ABC):
         return batch
 
     def forward_precomputed_features_dict(
-        self, batch: dict[str, torch.Tensor]
+        self, batch: dict[str, torch.Tensor], valid_mics: torch.Tensor | None = None
     ) -> torch.Tensor:
         raise NotImplementedError(
             "forward_precomputed_features_dict method must be implemented for feature extractors that accept dictionary input for precomputed features."
         )
+
+    def get_valid_feature_mask(self, valid_mics_count: torch.Tensor | None, max_M: int) -> torch.Tensor | None:
+        """
+        Returns a boolean mask of shape (B, C_out) indicating which output features are valid.
+        
+        Args:
+            valid_mics_count (torch.Tensor | None): Tensor of shape (B,) with the number of valid mics per batch element.
+            max_M (int): The maximum number of microphones in the batch (i.e. the channel dimension).
+            
+        Returns:
+            torch.Tensor | None: A boolean mask of shape (B, C_out) where True means the feature channel is valid.
+        """
+        if valid_mics_count is None:
+            return None
+            
+        device = valid_mics_count.device
+        # By default, output features map 1:1 to microphones
+        mask = torch.arange(max_M, device=device).expand(
+            valid_mics_count.shape[0], max_M
+        ) < valid_mics_count.unsqueeze(1)
+        return mask
 
     def _verbose_parameters(self, indent: str = "") -> None:
         """

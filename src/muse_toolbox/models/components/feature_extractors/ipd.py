@@ -74,7 +74,7 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
     def feature_dim(self) -> int:
         return self.transform.num_freq_bins
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # batch: (B, M, F, T)
         phase = torch.angle(batch)
         B, M, F, T = phase.shape
@@ -90,13 +90,10 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
 
         elif self.mode == "all":
             # Compute all pairs (i, j) where i < j
-            diffs = []
-            for i in range(M):
-                for j in range(i + 1, M):
-                    diffs.append(phase[:, i : i + 1, :, :] - phase[:, j : j + 1, :, :])
-            if not diffs:
+            row, col = torch.triu_indices(M, M, offset=1, device=phase.device)
+            diff = phase[:, row, :, :] - phase[:, col, :, :]
+            if diff.shape[1] == 0:
                 return torch.empty(B, 0, F, T, device=phase.device)
-            diff = torch.cat(diffs, dim=1)
 
         else:
             raise ValueError(f"Invalid mode '{self.mode}'.")
@@ -105,6 +102,23 @@ class IPD_Feature_Extractor(BaseFeatureExtractor):
         ipd = torch.remainder(diff + torch.pi, 2 * torch.pi) - torch.pi
 
         return ipd
+
+    def get_valid_feature_mask(self, valid_mics_count: torch.Tensor | None, max_M: int) -> torch.Tensor | None:
+        if valid_mics_count is None: return None
+        B = valid_mics_count.shape[0]
+        device = valid_mics_count.device
+        
+        mic_mask = torch.arange(max_M, device=device).expand(B, max_M) < valid_mics_count.unsqueeze(1)
+        
+        if self.mode == "ref":
+            indices = [i for i in range(max_M) if i != self.ref_channel]
+            return mic_mask[:, indices]
+            
+        elif self.mode == "all":
+            row, col = torch.triu_indices(max_M, max_M, offset=1, device=device)
+            return mic_mask[:, row] & mic_mask[:, col]
+            
+        return None
 
 
 class CSIPD_Feature_Extractor(IPD_Feature_Extractor):
@@ -128,7 +142,7 @@ class CSIPD_Feature_Extractor(IPD_Feature_Extractor):
     def feature_dim(self) -> int:
         return 2 * self.transform.num_freq_bins
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # 1. Get standard IPD features: (B, P, F, T)
         ipd = super().forward_stft(batch)
         B, P, F, T = ipd.shape
@@ -273,7 +287,7 @@ class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
         precomputedict["features"] = raw_ipd
         return precomputedict
 
-    def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_precomputed_features(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # batch: (B, P, F, T)
         B, P, F_dim, T = batch.shape
 
@@ -302,7 +316,7 @@ class Condensed_IPD_Feature_Extractor(IPD_Feature_Extractor):
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # 1. Get standard IPD features: (B, P*F, T)
         ipd_flat = super().forward_stft(batch)
         return self.forward_precomputed_features(ipd_flat)
@@ -436,7 +450,7 @@ class Condensed_CSIPD_Feature_Extractor(CSIPD_Feature_Extractor):
         precomputedict["features"] = raw_csipd
         return precomputedict
 
-    def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_precomputed_features(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # batch: (B, P, 2*F, T)
         B, P, F2, T = batch.shape
 
@@ -466,7 +480,7 @@ class Condensed_CSIPD_Feature_Extractor(CSIPD_Feature_Extractor):
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # 1. Get standard CSIPD features: (B, 2*P*F, T)
         csipd_flat = super().forward_stft(batch)
         return self.forward_precomputed_features(csipd_flat)

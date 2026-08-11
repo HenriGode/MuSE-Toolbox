@@ -37,11 +37,14 @@ class AMIDatabase:
         meeting_dir = self.data_dir / meeting_id / "audio"
         
         channels = []
-        # AMI arrays have 8 microphones each
+        # AMI arrays officially have 8 microphones, but Idiap Array2 only has 4.
         for i in range(1, 9):
             wav_path = meeting_dir / f"{meeting_id}.{array_id}-0{i}.wav"
             if not wav_path.exists():
-                raise FileNotFoundError(f"Missing audio file: {wav_path}")
+                if i > 1:
+                    break # We hit the end of the available microphones (e.g. 4 for Idiap)
+                else:
+                    raise FileNotFoundError(f"Missing audio file: {wav_path}")
                 
             waveform, sample_rate = load_audio(wav_path, sampling_frequency=self.fs)
             channels.append(waveform[0]) # waveform is [1, num_samples], so take the 0th dim

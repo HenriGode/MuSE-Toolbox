@@ -65,13 +65,13 @@ We have firmly established the ideal processing pipeline for the toolbox, design
 
 1. **Raw Audio:** Multi-channel waveform input.
 2. **Global STFT:** A unified time-frequency transform for all features (e.g., 64ms window, 16ms shift at 8kHz) to eliminate heterogeneous batch padding issues.
-3. **Feature Extraction:** Extracts spectral (e.g., Log-Mel, dependent on $M$ mics) and spatial (e.g., IPD, dependent on $P$ pairs) domains.
-4. **Channel Combinators (Per Feature):** Safely condenses the spatial dimension of *each* feature down to a fixed dimension $J$. 
-   - **Crucial Decision (Late Stacking):** We use individual combinators (like Self-Attention or Circular Mean) *before* stacking. This preserves the mathematical purity of the data (circular phase math vs. linear energy math) and solves the geometry mismatch between $M$ mics and $P$ pairs.
-   - **Advanced Pattern:** This stage can leverage **Global-to-Local Cross-Attention** (where a pooled global context vector queries the individual modality features) to allow power-based features to guide spatial-based features without mathematically corrupting them.
-5. **Feature Stacking:** Concatenates the now-fixed dimension vectors ($J_{Mel} + J_{IPD}$) into a unified feature vector.
-6. **Source Count Estimator:** Temporal classifier (GRU / TCN) predicting frame-wise activity.
-7. **Output:** Discrete source count predictions.
+3. **Feature Extraction:** Extracts spectral (e.g., Log-Mel, dependent on $M$ mics) and spatial (e.g., IPD, dependent on $P$ pairs) domains while preserving the variable channel dimension.
+4. **Feature Stacking:** Concatenates the features into a unified multi-channel representation.
+5. **Source Count Estimator (Interleaved Processing):** 
+   - Core classifier blocks (e.g., GRU / TCN) are designed to handle a variable number of input channels and operate independently *per channel*.
+   - Between these repeated core blocks, we insert **Cross-Channel Sharing Layers** (e.g., TAC layers) to allow information flow and synchronization across the variable number of microphones.
+6. **Final Channel Aggregation:** A straightforward pooling operation (e.g., mean pooling) condenses the variable channels down to a single global representation.
+7. **Output:** Discrete source count predictions based on the aggregated features.
 
 ---
 
@@ -108,12 +108,13 @@ If you are resuming development, here are the direct next steps needed to comple
 - [x] **1j. add the wandb run name to the timestamp level of the outputs dir strucutre**
 
 
-- [ ] **2. Implement the Decoupled Channel Combinator Architecture**
-  - [x] Implement the new processing flow by formally decoupling the channel condensation logic from the raw feature extraction.
-  - [x] Create a new `channel_combinators` subdirectory in both `src/muse_toolbox/models/components/` and `configs/model/`.
-  - [ ] Refactor `StackedFeatureExtractor` to execute the late-stacking paradigm: it must route raw spatial/spectral features through their respective combinators before concatenating them.
-  - [x] Explore and validate the Global-to-Local Cross-Attention block as an advanced combinator option and also still teh Self attention channel combinator.
-  - [x] integrate the new logic into the COSAD and RTF pipelines and validate it.
+- [ ] **2. Refactor Source Count Estimator & Channel Combinator Architecture**
+  - *Note: We are moving away from the "early-stacking combinator" approach.*
+  - [ ] Refactor the main layers of source count classifiers to natively handle a variable number of microphones/input channels.
+  - [ ] Design repeated core estimator blocks that operate purely *per-channel*.
+  - [ ] Introduce cross-channel sharing layers (e.g., Transform-Average-Concatenate / TAC layers) between the core per-channel blocks to exchange information.
+  - [ ] Implement a final channel aggregation stage (e.g., mean pooling) at the end of the estimator, just before the final classification head.
+  - [x] Initial `channel_combinators` subdirectories were created, but this logic must now be adapted to the new interleaved TAC/pooling pattern.
 
 
 - [ ] **3. Directory-level README Documentation**
@@ -138,7 +139,9 @@ If you are resuming development, here are the direct next steps needed to comple
   - Establish a formal `pytest` suite. Write unit tests for the core feature extractors, TCN blocks, and estimators to rigorously lock down their tensor shapes and behavior.
 
 - [ ] **7. Setup the AMI Dataset**
-  - Introduce the full AMI corpus integration inside the `data/` directory. Build out the `Database`, `Dataset`, and `DataModule` wrappers.
+  - [x] Implement the `Database`, `Dataset` classes, and config files for the AMI corpus.
+  - [ ] Rigorously test and validate the dataset generation logic to ensure it produces the exact same dataset splits/features as used by Cornell et al.
+  - [ ] Finalize any remaining PyTorch Lightning `DataModule` wrappers for training integration.
 
 
 

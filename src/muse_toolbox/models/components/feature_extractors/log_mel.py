@@ -97,7 +97,7 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
     def feature_dim(self) -> int:
         return self.n_mels
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # batch: (B, M, F, T)
         # Compute power spectrogram
         power_spec = batch.abs().pow(2)
@@ -251,7 +251,7 @@ class Condensed_LogMel_Feature_Extractor(LogMel_Feature_Extractor):
         precomputedict["features"] = raw_mel
         return precomputedict
 
-    def forward_precomputed_features(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_precomputed_features(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         # batch: (B, Mproc, n_mels, T)
 
         if self.mode == "ref":
@@ -275,6 +275,6 @@ class Condensed_LogMel_Feature_Extractor(LogMel_Feature_Extractor):
         else:
             raise ValueError(f"Unknown condense_method: {self.condense_method}")
 
-    def forward_stft(self, batch: torch.Tensor) -> torch.Tensor:
+    def forward_stft(self, batch: torch.Tensor, valid_mics: torch.Tensor | None = None) -> torch.Tensor:
         raw_mel = super().forward_stft(batch)
         return self.forward_precomputed_features(raw_mel)

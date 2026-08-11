@@ -47,27 +47,29 @@ class BaseChannelCombinator(nn.Module, ABC):
         pass
 
     @abstractmethod
-    def forward_(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_(self, x: torch.Tensor, feature_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward pass of the channel combinator.
 
         Args:
             x (torch.Tensor): Input tensor of shape (Batch, Channels, Features, Time)
+            feature_mask (torch.Tensor | None): Valid feature mask (Batch, Channels)
 
         Returns:
             torch.Tensor: Output tensor of shape (Batch, C_out, Features, Time)
         """
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, feature_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward dimensionality checker.
 
         Args:
             x (torch.Tensor): Input tensor of shape (Batch, Channels, Features, Time) or (B, F, T)
+            feature_mask (torch.Tensor | None): Valid feature mask (Batch, Channels)
 
         Returns:
             torch.Tensor: Output tensor of shape (Batch, Channels, Features, Time) or (B, 1, F, T)
         """
         if x.dim() == 3:
             x = x.unsqueeze(1)
-        return self.forward_(x)
+        return self.forward_(x, feature_mask=feature_mask)
