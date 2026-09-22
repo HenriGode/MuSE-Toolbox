@@ -1,0 +1,794 @@
+\documentclass[8pt,hyperref={pdfpagelabels=true},xcolor=table,aspectratio=169]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\usepackage{amsmath,amssymb,mathtools,amsfonts,bm,nicefrac}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage{siunitx}
+\usepackage{multicol}
+\usepackage[absolute,overlay]{textpos}
+\usepackage{colortbl}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning}
+
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}
+
+\definecolor{mygreen}{RGB}{0, 127, 0}
+\definecolor{myred}{RGB}{127, 0, 0}
+\definecolor{myblue}{RGB}{0, 0, 127}
+\definecolor{mygrey}{RGB}{127, 127, 127}
+
+% TikZ styles for flowcharts
+\tikzstyle{io2} = [rectangle, rounded corners, minimum width=1.5cm, minimum height=1cm, align=center, draw=black, fill=gray!20]
+\tikzstyle{process2} = [rectangle, minimum width=1.5cm, minimum height=1cm, align=center, draw=black, fill=blue!20]
+\tikzstyle{investigate2} = [rectangle, very thick, rounded corners, minimum width=1.5cm, minimum height=1cm, align=center, draw=black, fill=orange!40]
+\tikzstyle{arrow2} = [thick,->,>=stealth]
+
+\renewcommand{\familydefault}{\sfdefault}
+
+\title{Array Agnostic Low Latency DNN-Based\\ Online Source Counting}
+\subtitle{Research Meeting}
+\date{\today}
+\author[Henri Gode]{\underline{Henri Gode}}
+\hypersetup{pdfauthor={Henri Gode}}
+\institute{Signal Processing Group}
+
+\usetheme{uol}
+
+\begin{document}
+
+% ----------------------------------------------------------------------
+% 1. Title Slide
+% ----------------------------------------------------------------------
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 1b. Current Status & Near-Term Focus
+% ----------------------------------------------------------------------
+\begin{frame}{Current Status \& Near-Term Focus}
+    \textbf{Before EUSIPCO ToDos:}
+    \begin{itemize}
+        \item Finish EUSIPCO Poster
+        \item Submit Journal 2
+        \item \textbf{Career:} Job application to Starkey (Target start date: 01.03.2027)
+    \end{itemize}
+    \vspace{1.5em}
+    \textbf{After EUSIPCO -> Journal 3:}
+    \begin{itemize}
+        \item Focus fully on the Array-Agnostic Online Source Counting pipeline.
+    \end{itemize}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 1c. Journal 3: Progress & Roadmap
+% ----------------------------------------------------------------------
+\begin{frame}{Journal 3: Progress \& Roadmap}
+    \textbf{Upcoming Steps:}
+    \begin{enumerate}
+        \item \textbf{Data Validation:} Final validation of the synthetic and AMI datasets. (I will send an overview doc for feedback on config parameters).
+        \item \textbf{Baseline Architecture:} Implement Cornell's Transformer architecture, adapted with \textbf{TAC layers between blocks} to handle varying microphone counts.
+        \item \textbf{Feature Evaluation:} Compare spectral vs. spatial features across datasets (Synthetic circ/random \& AMI) in matched/unmatched conditions.
+        \item \textbf{Geometry Conditioning:} Implement array geometry conditioning, evaluate, and compare.
+    \end{enumerate}
+    \vspace{1em}
+    \begin{alertblock}{Ultimate Goal}
+        Confirm the benefit of spatial features, and propose a system robust to varying arrays (mic count \& geometry) that outperforms Cornell's baseline in unmatched conditions. And investigate whether microphone array conditioning is beneficial.
+    \end{alertblock}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 2. Intro Slide (Motivation & Objective)
+% ----------------------------------------------------------------------
+% \begin{frame}{Motivation \& Objective}
+%     \begin{columns}[T]
+%         \begin{column}{0.5\textwidth}
+%             \textbf{Motivation}
+%             \begin{itemize}
+%                 \item Modern audio devices (e.g. hearing aids, teleconferencing) should provide a benefit in highly dynamic acoustic scenarios with varying active speakers.
+%                 \item \textbf{Advanced algorithms} (source separation, speech enhancement, DOA estimation) \textbf{require} the knowledge of \textbf{the current number of active sources}.
+%                 \item Often multi-microphone data ($M \ge 2$), providing rich spatial information.
+%             \end{itemize}
+%         \end{column}
+%         \begin{column}{0.5\textwidth}
+%             \begin{alertblock}{Objective}
+%                 Develop a \textbf{training-based ML model} to perform \textbf{online, frame-by-frame source counting} with low latency, highly robust against unseen array geometries and varying microphone counts.
+%             \end{alertblock}
+%         \end{column}
+%     \end{columns}
+% \end{frame}
+
+
+\begin{frame}{Motivation}
+  \begin{minipage}[c]{0.49\textwidth}
+    \textbf{Acoustic Scenario:}
+    \begin{itemize}
+      \item \textbf{Randomly active speakers}, reverberation and background noise degrade speech quality and intelligibility.
+    \end{itemize}
+    \vspace{1em}
+
+    \onslide<2->{
+      \textbf{Motivation for Source Counting:}
+      \begin{itemize}
+        \item Assistive listening devices (e.g. binaural hearing aids) aim to enhance speech quality and intelligibility.
+        \item Online algorithms (source localization, extraction \& separation) often require \textbf{knowing the current number of active sources}.
+      \end{itemize}
+    }
+    \vspace{1em}
+
+    \onslide<3->{
+      \textbf{Our Focus}
+      \begin{itemize}
+        \item \textbf{DNN-based} source counting
+        \item \textbf{Low latency} (frame-causal)
+        \item \textbf{Geometry-agnostic} (arbitrary microphone array configurations)
+      \end{itemize}
+    }
+  \end{minipage}
+  \hfill
+  \begin{minipage}[c]{0.49\textwidth}
+    \onslide<1->{
+      \begin{figure}
+        \includegraphics[width=0.9\textwidth]{figures_new/scenario_plot.pdf}
+        \label{fig:scenario}
+      \end{figure}
+      \begin{figure}
+        \includegraphics[width=\textwidth]{figures_new/source_activity_timeline.pdf}
+        \label{fig:timeline}
+      \end{figure}
+    }
+  \end{minipage}
+
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 3. General System Overview
+% ----------------------------------------------------------------------
+\begin{frame}{General System Overview - Single Feature}
+    \begin{minipage}{0.75\textwidth}
+        \begin{tikzpicture}
+
+            % Place nodes
+            \node (input) [io2] {raw audio $\mathbf{y}$\\ \tiny $\left[M, N\right]$};
+            \node (stft) [process2, below of=input, node distance=1.5cm] {STFT};
+            \node<2-> (feature) [investigate2, right of=stft, node distance=2.6cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
+            \node<3-> (dnn) [process2, right of=feature, node distance=3.2cm] {\textbf{DNN (w/ TAC)} \\ Classifier};
+            \node<4-> (output) [io2, above of=dnn, node distance=1.5cm] {source count $\widehat{S}_t$ \\ \tiny $\left[S, T\right]$};
+
+            % Draw edges
+            \draw [arrow2] (input) -- (stft);
+            \draw<2-> [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {\tiny $\left[M, 2K, T\right]$} (feature);
+            \draw<3-> [arrow2] (feature) -- node[above] {$\bm{\xi}$} node[below] {\tiny $\left[C(M),F,T\right]$} (dnn);
+            \draw<4-> [arrow2] (dnn) -- (output);
+        \end{tikzpicture}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.23\textwidth}
+        \tiny
+        \begin{itemize}
+            \item $M \rightarrow$ \# microphones 
+            \item $N \rightarrow$ \# time-samples 
+            \item<2-> $T \rightarrow$ \# time-frames (STFT)
+            \item<2-> $K \rightarrow$ \# frequencies (STFT)
+            \item<3-> $C(M) \rightarrow$ \# channels 
+            \item<3-> $F \rightarrow$ \# features
+            \item<4-> $S \rightarrow$ max. \# sources + 1
+            \item<4-> $\widehat{S}_t \rightarrow$ estimated source count (at time $t$)
+        \end{itemize}
+    \end{minipage}
+
+        \vspace{1.5em}
+    \begin{itemize}
+        \item<6-> \textbf{Frame-Causal Pipeline:} Processes data frame-by-frame without future lookahead.
+        \item<6-> \textbf{Modularity:} Allows systematic ablation of feature extractors, combinators, classifiers
+    \end{itemize}
+\end{frame}
+
+
+
+% ----------------------------------------------------------------------
+% 4. Details: Raw Audio & STFT
+% ----------------------------------------------------------------------
+\begin{frame}{Details: Raw Audio \& STFT}
+    % \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.60\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    %     \node<2->[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
+    %         \includegraphics[width=0.39\textwidth]{figures_J3/STFT_scenario_97.png}
+    %     };
+    % \end{tikzpicture}
+    \underline{\textbf{Raw Audio Input}}
+    \vspace{1.0em}
+    \begin{itemize}
+        \item Microphone signal array: $\mathbf{y} \in \mathbb{R}^{M \times N}$
+        \item \textbf{Sampling Frequency:} $f_s = 8000$ Hz
+        \item \textbf{Number of microphones:} $M \in [2, 8]$
+        \item \textbf{Signal Length:} $\SI{120}{s} \rightarrow N = \SI{960000}{samples}$ \
+    \end{itemize}
+    \vspace{2em}
+    \onslide<2->{
+    \underline{\textbf{Short-Time Fourier Transform (STFT)}}
+    \vspace{1.0em}
+    \begin{itemize}
+        \item \textbf{Frame Length:} $\SI{32}{\milli\second} \rightarrow N_{FFT} = 256$ samples
+        \item \textbf{Frame Shift:} $\SI{16}{\milli\second} \rightarrow 128$ samples
+        \item \textbf{Window Type:} square-root Hann
+        \item \textbf{Frequency Bins:} $K = \frac{N_{FFT}}{2} + 1 = 257$ bins
+        \item \textbf{Number of frames:} $T = \lceil \frac{N_{samples}}{128} \rceil + 1 = 7501$
+        \item \textbf{STFT Output:} $\mathbf{Y} \in \mathbb{C}^{M \times K \times T}$
+    \end{itemize}
+    }
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 6. Details: Spectral Features
+% ----------------------------------------------------------------------
+\begin{frame}{Features}
+    % \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    %     \node<2->[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
+    %         \includegraphics[width=0.39\textwidth]{figures_J3/LogMel_scenario_97.png}
+    %     };
+    % \end{tikzpicture}
+    
+    \onslide<1->{
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item %Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
+    }   
+    \onslide<2->{
+        \vspace{2em}
+        \begin{itemize}
+            \item \textbf{Raw STFT Features} (spectral)
+                  \begin{itemize}
+                      \item $\bm{\xi}^{(STFT)} \in \mathbb{R}^{M \times 2K \times T}$
+                      \item real \& imag (or magnitude \& phase)
+                      \item \textit{Pros:} No information loss
+                      \item \textit{Cons:} Geometry dependent and high dimensionality
+                  \end{itemize}
+              \vspace{1em}  
+        \item \textbf{Log-Mel Features} (spectral)
+              \begin{itemize}
+                  \item $\bm{\xi}^{(Mel)} \in \mathbb{R}^{M \times K_{Mel} \times T}$
+                  \item Filterbank performs per-channel dim. reduction  \\ ($K=257$ freq. bins $\rightarrow K_{Mel}=80$ perceptual bands)
+                  \item \textit{Pros:} Reduces dimensionality motivated by psychoacoustics
+                %   \item \textit{Cons:} Loss of spatial information
+              \end{itemize}
+    \end{itemize}
+    }
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 7a. Details: Spatial Features
+% ----------------------------------------------------------------------
+\begin{frame}{Spatial Features (IPD/CSIPD)}
+    % \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    %     \node[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
+    %         \includegraphics[width=0.39\textwidth]{figures_J3/IPD_scenario_97.png}
+    %     };
+    % \end{tikzpicture}
+    
+    \onslide<1->{
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item %Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
+    }
+    \vspace{2em}
+    \onslide<1->{   
+    \begin{itemize}
+        \item \textbf{Inter-channel Phase Differences (IPD / CSIPD)} (spatial)
+              \begin{itemize}
+                  \item IPD: ${\Delta\phi_{ij}} = \phi_i - \phi_j$ \\ $\rightarrow\quad \bm{\xi}_{t,f}^{(IPD)} \in \mathbb{R}^{C(M) \times K \times T}$
+                  \item CSIPD: Cosine and Sine of IPD \\ ${\Delta\phi_{ij}^{\text{cos}}} = \cos(\Delta\phi_{ij}) \quad\text{and}\quad {\Delta\phi_{ij}^{\text{sin}}} = \sin(\Delta\phi_{ij})$ \\ $\rightarrow\quad \bm{\xi}_{t,f}^{(CSIPD)} \in \mathbb{R}^{C(M) \times 2K \times T}$
+                  \item Number of pairs $C(M) = \frac{M(M-1)}{2}$ \\ For $M=8$, $C(M)=28$
+              \end{itemize}
+              \vspace{1em}
+    \end{itemize}
+    }
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 7b. Details: Spatial Features
+% ----------------------------------------------------------------------
+\begin{frame}{Spatial Features (GMSC \& wGMSC)}
+    % \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    %     \node[anchor=south east, xshift=-0.1cm, yshift=0.0cm] at (current page.south east) {
+    %         \includegraphics[width=0.39\textwidth]{figures_J3/WGMSC_scenario_97.png}
+    %     };
+    % \end{tikzpicture}
+    
+    \onslide<1->{
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item %Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
+    }
+    \vspace{2em}
+    \onslide<1->{   
+    \begin{itemize}
+        \item \textbf{Spatial Coherence (GMSC \& wGMSC)} (spatial)
+              \begin{itemize}
+                  \item $\bm{\xi}_{t,f}^{(GMSC)} \in \mathbb{R}^{1 \times K \times T}$
+                  \item $\bm{\xi}_{t,f}^{(wGMSC)} \in \mathbb{R}^{1 \times 2K \times T}$
+                  \item GMSC generalizes spatial coherence across all pairs
+                  \item wGMSC uses additional whitening for \textit{change detection} \\ (source activations/deactivations)
+                  \item \textit{Pros:} Naturally aggregates $M$ channels into a single dimension
+                  \item \textit{Cons:} Neglects spectral information
+              \end{itemize}
+    \end{itemize}
+    }
+\end{frame}
+
+
+
+% % ----------------------------------------------------------------------
+% % 9b. Details: TAC Layer (Transform-Average-Concatenate)
+% % ----------------------------------------------------------------------
+% \begin{frame}{Details: TAC Layer (Transform-Average-Concatenate)}
+%     \begin{center}
+%         \begin{tikzpicture}
+%             % Nodes
+%             \node (input) [io2] {Input $\bm{\xi}$\\ \tiny $\left[C, F, T\right]$};
+            
+%             \node (local_proj) [process2, right of=input, node distance=2.5cm, yshift=1.0cm] {\textbf{Local} \\ \textbf{Transf.} \\ $F \rightarrow D$};
+            
+%             \node (mean_pool) [investigate2, right of=local_proj, node distance=2.5cm] {\textbf{Mean} \\ \textbf{Pool} ($C$)};
+            
+%             \node (global_proj) [process2, right of=mean_pool, node distance=2.5cm] {\textbf{Global} \\ \textbf{Transf.} \\ $D \rightarrow D$};
+            
+%             \node (concat) [investigate2, right of=local_proj, node distance=5.0cm, yshift=-1.0cm] {\textbf{Concat} \\ (Loc+Glob)};
+            
+%             \node (output_proj) [process2, right of=concat, node distance=2.5cm] {\textbf{Final} \\ \textbf{Transf.} \\ $2D \rightarrow F$};
+            
+%             \node (output) [io2, below of=output_proj, node distance=1.5cm] {Output\\ \tiny $\left[C, F, T\right]$};
+
+%             % Edges
+%             \draw [arrow2] (input) |- (local_proj);
+%             \draw [arrow2] (local_proj) -- node[above] {\tiny $\left[C, D, T\right]$} (mean_pool);
+%             \draw [arrow2] (mean_pool) -- node[above] {\tiny $\left[1, D, T\right]$} (global_proj);
+            
+%             \draw [arrow2] (input) |- node[below, pos=0.8] {\tiny $\left[C, F, T\right]$} (concat);
+%             \draw [arrow2] (global_proj) -| node[above, near start] {\tiny $\left[1, D, T\right]$} (concat);
+%             \draw [arrow2] (local_proj) -- (concat);
+            
+%             \draw [arrow2] (concat) -- node[above] {\tiny $\left[C, 2D, T\right]$} (output_proj);
+%             \draw [arrow2] (output_proj) -- (output);
+
+%         \end{tikzpicture}
+%     \end{center}
+    
+%     \vspace{1.0em}
+%     \begin{itemize}
+%         \item TAC is a \textbf{channel-permutation invariant} mechanism for multi-channel processing.
+%         \item It generates a global representation (average over all channels) and distributes it back to each local channel.
+%         \item By interleaving these layers between Transformer blocks, the network frequently synchronizes spatial awareness across a varying number of channels $C(M)$.
+%     \end{itemize}
+% \end{frame}
+
+
+
+% ----------------------------------------------------------------------
+% 11. Details: Source Count Estimation Classifier
+% ----------------------------------------------------------------------
+\begin{frame}{Source Count Classifier}
+
+    %     \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    % \end{tikzpicture}
+
+    \textbf{Classification Output}
+    \begin{itemize}
+        \item Max. 4 simulated sources $\rightarrow S = 5\quad\rightarrow$ (Classes: $0, 1, 2, 3, 4$)
+        \item Softmax layer across discrete source count classes
+        \item \textbf{Inference:} Frame-wise $\argmax$ of the class probabilities
+    \end{itemize}
+    \vspace{2em}
+    \textbf{Temporal Modeling Architecture}
+    \begin{itemize}
+        \item \textbf{Default Model:} Causal Transformer sequence-to-sequence classifier
+        \item \textit{Alternatives:} RNN (GRU / LSTM), TCN
+    \end{itemize}
+    \vspace{1em}
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 11b. Details: Transformer Architecture
+% ----------------------------------------------------------------------
+\begin{frame}{Details: Transformer Architecture}
+    \begin{center}
+        \begin{tikzpicture}
+            % Nodes
+            \node (input) [io2] {Input $\bm{\xi}$\\ \tiny $\left[C, F, T\right]$};
+            \node (norm) [process2, right of=input, node distance=2cm] {\textbf{LayerNorm}};
+            \node (chunk) [process2, right of=norm, node distance=2cm] {\textbf{Causal} \\ \textbf{Chunking}};
+            \node (bottleneck) [process2, right of=chunk, node distance=3.0cm] {\textbf{Bottleneck} \\ Conv1D};
+            \node (posenc) [process2, right of=bottleneck, node distance=2.5cm] {\textbf{Positional} \\ \textbf{Encoding}};
+            
+            \node (transformer) [investigate2, below of=bottleneck, node distance=2.0cm, minimum width=4cm] {\textbf{$N\times$ Blocks:} Transformer + TAC};
+            
+            \node (pool) [process2, left of=transformer, node distance=4.3cm] {\textbf{Mean} \\ \textbf{Pool} ($C$)};
+            \node (output_conv) [process2, left of=pool, node distance=2.3cm] {\textbf{Output} \\ Conv1D};
+            \node (output) [io2, below of=output_conv, node distance=1.5cm] {Logits\\ \tiny $\left[S, T\right]$};
+
+            % Edges
+            \draw [arrow2] (input) -- (norm);
+            \draw [arrow2] (norm) -- (chunk);
+            \draw [arrow2] (chunk) -- node[above] {\tiny $\left[F(T_C+1), T\right]$} (bottleneck);
+            \draw [arrow2] (bottleneck) -- node[above] {\tiny $\left[E, T\right]$} (posenc);
+            \draw [arrow2] (posenc) |- (transformer);
+            \draw [arrow2] (transformer) -- (pool);
+            \draw [arrow2] (pool) -- (output_conv);
+            \draw [arrow2] (output_conv) -- (output);
+        \end{tikzpicture}
+    \end{center}
+    
+    \vspace{1.0em}
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \textbf{Default Architecture Parameters:}
+            \begin{itemize}
+                \item Embedding Dim ($E$): $128$
+                \item Num Layers ($N$): $4$
+                \item Num Heads: $4$
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \vspace{1.2em}
+            \begin{itemize}
+                \item FF Inner Dim: $1024$
+                \item Causal Chunk Size ($T_C$): $7$
+                \item Dropout: $0.2$
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 12. General System Overview - Multi-Feature Fusion
+% ----------------------------------------------------------------------
+\begin{frame}{General System Overview - Multi-Feature Fusion}
+    \begin{center}
+        \begin{tikzpicture}
+
+            % Place nodes
+            \node (input) [io2] {raw audio $\mathbf{y}$\\ \tiny $\left[M, N\right]$};
+            \node (stft) [process2, below of=input, node distance=1.5cm] {STFT};
+            \node (feature) [investigate2, right of=stft, node distance=2.57cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
+            \node (feature2) [investigate2, below of=feature, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 2}};
+            \node (stacker) [process2, right of=feature2, node distance=3.0cm] {\textbf{Concat}};
+            \node (dnn) [process2, right of=stacker, node distance=2.5cm] {\textbf{DNN (w/ TAC)} \\ Classifier};
+            \node (output) [io2, below of=dnn, node distance=1.5cm] {source count $\widehat{S}_t$ \\ \tiny $\left[S, T\right]$};  
+
+            % Draw edges
+            \draw [arrow2] (input) -- (stft);
+            \draw [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {\tiny $\left[M, 2K, T\right]$} (feature);
+            \draw [arrow2] (stft) |- node[above, pos = 0.85] {$\mathbf{Y}$} node[below, pos = 0.85] {\tiny $\left[M, 2K, T\right]$} (feature2);
+            \draw [arrow2] (feature) -| node[above, pos=0.15] {$\bm{\xi}_1$} node[below, pos=0.15] {\tiny $\left[C_1(M),F_1,T\right]$} (stacker);
+            \draw [arrow2] (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (stacker);
+            \draw [arrow2] (stacker) -- node[above] {$\bm{\xi}$} node[below] {\tiny $\left[C(M),F,T\right]$} (dnn);
+            \draw [arrow2] (dnn) -- (output);
+            
+            % Legend in the upper right corner
+            \node (legend) [anchor=north east] at (dnn.east |- input.north) {
+                \begin{minipage}{0.2\textwidth}
+                    \tiny
+                    \begin{itemize}
+                        \item $M \rightarrow$ \# microphones 
+                        \item $N \rightarrow$ \# time-samples 
+                        \item $T \rightarrow$ \# time-frames 
+                        \item $K \rightarrow$ \# frequencies 
+                        \item $C(M) \rightarrow$ \# channels 
+                        \item $F \rightarrow$ \# features
+                        \item $S \rightarrow$ max. \# sources
+                    \end{itemize}
+                \end{minipage}
+            };
+        \end{tikzpicture}
+    \end{center}
+    \vspace{-5em}
+    \textbf{How do we combine spatial \& spectral features?}
+    \vspace{0.5em}
+    \begin{itemize}
+        \item \textbf{Basic Stacking (Our Baseline)}
+            %   \begin{itemize}
+            %       \item Apply channel combinator individually on multiple features and concatenate the feature dimension
+            %   \end{itemize}
+              \vspace{0.5em}
+        \item \textbf{FiLM Layers (Feature-wise Linear Modulation)}
+            %   \begin{itemize}
+            %       \item One feature generates affine transformation (shift and scale) applied to the other feature
+            %   \end{itemize}
+              \vspace{0.5em}
+        \item \textbf{Attention-Based Fusion}
+            %   \begin{itemize}
+            %       \item Use cross-attention between modalities
+            %   \end{itemize}
+    \end{itemize}
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 8. Details: Microphone Positions
+% ----------------------------------------------------------------------
+\begin{frame}{Details: Microphone Positions}
+    % \begin{tikzpicture}[remember picture, overlay]
+    %     \node[anchor=north east, xshift=-0.1cm, yshift=-0.1cm] at (current page.north east) {
+    %         \includegraphics[width=0.6\textwidth]{figures_J3/flow_chart.png}
+    %     };
+    % \end{tikzpicture}
+    
+    \onslide<1->{
+        \begin{minipage}{0.4\textwidth}
+            \vspace{-3em}
+            \begin{block}{\textbf{Feature types}}
+                \begin{itemize}
+                    \item Spectral features
+                    \item Spatial features
+                    \item Microphone positions (relative)
+                \end{itemize}
+            \end{block}
+        \end{minipage}
+    }
+    \vspace{2em}
+    \onslide<1->{
+
+    \textbf{Explicit Geometric Conditioning}
+    \begin{itemize}
+        \item Provide the neural network with the exact Cartesian coordinates of the active microphones relative to the array center.
+        \item \textbf{Dimensions:} $\mathbf{G} \in \mathbb{R}^{M \times 3}$ (representing relative$x, y, z$ positions).
+    \end{itemize}
+    }
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 12. General System Overview - Geometry Conditioning
+% ----------------------------------------------------------------------
+\begin{frame}{General System Overview - Geometry Conditioning}
+    \begin{center}
+        \begin{tikzpicture}
+
+            % Place nodes
+            \node (input) [io2] {raw audio $\mathbf{y}$\\ \tiny $\left[M, N\right]$};
+            \node (stft) [process2, below of=input, node distance=1.5cm] {STFT};
+            \node (feature) [investigate2, right of=stft, node distance=2.57cm] {\textbf{Feature} \\ \textbf{Ext. 1}};
+            \node (feature2) [investigate2, below of=feature, node distance=1.5cm] {\textbf{Feature} \\ \textbf{Ext. 2}};
+            \node (feature3) [investigate2, below of=feature2, node distance=1.5cm] {\textbf{Geometry} \\ \textbf{Ext. 3}};
+            \node (geometry) [io2, left of=feature3, node distance=2.25cm] {Array Geometry \\ \tiny $[M, 3]$};
+            \node (stacker) [process2, right of=feature2, node distance=3.0cm] {\textbf{Concat}};
+            \node (dnn) [process2, right of=stacker, node distance=2.5cm] {\textbf{DNN (w/ TAC)} \\ Classifier};
+            \node (output) [io2, below of=dnn, node distance=1.5cm] {source count $\widehat{S}_t$ \\ \tiny $\left[S, T\right]$};  
+
+            % Draw edges
+            \draw [arrow2] (input) -- (stft);
+            \draw [arrow2] (geometry) -- (feature3);
+            \draw [arrow2] (stft) -- node[above] {$\mathbf{Y}$} node[below] {\tiny $\left[M, 2K, T\right]$} (feature);
+            \draw [arrow2] (stft) |- node[above, pos = 0.85] {$\mathbf{Y}$} node[below, pos = 0.85] {\tiny $\left[M, 2K, T\right]$} (feature2);
+            \draw [arrow2] (feature) -| node[above, pos=0.15] {$\bm{\xi}_1$} node[below, pos=0.15] {\tiny $\left[C_1(M),F_1,T\right]$} (stacker);
+            \draw [arrow2] (feature2) -- node[above] {$\bm{\xi}_2$} node[below] {\tiny $\left[C_2(M),F_2,T\right]$} (stacker);
+            \draw [arrow2] (feature3) -| node[above, pos=0.15] {$\bm{\xi}_3$} node[below, pos=0.15] {\tiny $\left[C_3(M),F_3\right]$} (stacker);
+            \draw [arrow2] (stacker) -- node[above] {$\bm{\xi}$} node[below] {\tiny $\left[C(M),F,T\right]$} (dnn);
+            \draw [arrow2] (dnn) -- (output);
+            
+            % Legend in the upper right corner
+            \node (legend) [anchor=north east] at (dnn.east |- input.north) {
+                \begin{minipage}{0.2\textwidth}
+                    \tiny
+                    \begin{itemize}
+                        \item $M \rightarrow$ \# microphones 
+                        \item $N \rightarrow$ \# time-samples 
+                        \item $T \rightarrow$ \# time-frames 
+                        \item $K \rightarrow$ \# frequencies 
+                        \item $C(M) \rightarrow$ \# channels 
+                        \item $F \rightarrow$ \# features
+                        \item $S \rightarrow$ max. \# sources
+                    \end{itemize}
+                \end{minipage}
+            };
+        \end{tikzpicture}
+    \end{center}
+    \vspace{0.5em}
+    \begin{itemize}
+        \item \textbf{Geometry Conditioning:} 
+        \begin{itemize}
+            \item Additional time-independent feature vector (Cartesian coordinates).
+            \item Stacked directly into the feature representation alongside spatial/spectral inputs.
+            \item The network natively learns to attend to coordinates via the interleaved TAC architecture.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+
+
+
+% ----------------------------------------------------------------------
+% 12. Experiments Part 0: The Role of Spatial Features
+% ----------------------------------------------------------------------
+\begin{frame}{Scientific Questions -- Part 0: Role of Spatial Features}
+    \begin{block}{Question}
+        Does geometry conditioning using spatial information yield a benefit when spatial features are used?
+    \end{block}
+    \vspace{1em}
+    \textbf{Approach \& Expectation:}
+    \begin{itemize}
+        \item Compare systems utilizing:
+              \begin{enumerate}
+                  \item Spectral features only
+                  \item Spatial features only
+                  \item Combined Spectral + Spatial features
+              \end{enumerate}
+        \item We expect that additional spatial information leads to improved performance.
+        \item This replicates existing literature (e.g., Cornell baseline paper).
+    \end{itemize}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 13. Experiments Part 1: Robustness to Array Geometries
+% ----------------------------------------------------------------------
+\begin{frame}{Scientific Questions -- Part 1: Robustness to Array Geometries}
+    \begin{block}{Question}
+        How does performance drop during inference when using an unseen array (different geometry or differing number of microphones)?
+    \end{block}
+    \vspace{1em}
+    \textbf{The New 2-Dataset Strategy}
+    \begin{itemize}
+        \item \textbf{Setup:} Generate only 2 primary 8-channel datasets (Circular and Random).
+        \item \textbf{Variable Geometry Emulation:} During training and testing, dynamically sub-select a variable number of microphones ($2-8$) from the pool of 8 channels.
+        \item \textbf{Permutation Invariance:} Apply random channel permutations during training so the network does not learn positional biases.
+    \end{itemize}
+    \vspace{1em}
+    \begin{center}
+        \begin{tabular}{l|c}
+            \toprule
+            \textbf{Base 8-Channel Datasets} & \textbf{Dynamic Loading} \\
+            \midrule
+            \textbf{Circular Geometry} ($10$ cm radius)      & Yields $2-8$ Channels                      \\
+            \textbf{Random Geometry} (square, $20$ cm side)       & Yields $2-8$ Channels                      \\
+            \bottomrule
+        \end{tabular}
+    \end{center}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 14. Experiments Part 2: Conditioning with Relative Mic Positions
+% ----------------------------------------------------------------------
+\begin{frame}{Scientific Questions -- Part 2: Conditioning with Microphone Positions}
+    \begin{block}{Question}
+        Can conditioning with the physical microphone positions improve performance (especially on unseen arrays)?
+    \end{block}
+    \vspace{1em}
+    \textbf{Approach:}
+    \begin{itemize}
+        \item Append the relative positions of the microphones ($\mathbf{G} \in \mathbb{R}^{M \times 3}$) as an additional feature
+        \item Analyze how this specific conditioning improves overall performance/robustness.
+    \end{itemize}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 15. Datasets Configuration
+% ----------------------------------------------------------------------
+\begin{frame}{PRA-ANF Datasets Configuration}
+    \textbf{Simulated Dataset Parameters (PRA-ANF Base)}
+    \begin{itemize}
+        \item \textbf{Scale:} 1200 train, 150 validation, 150 test scenarios
+        \item \textbf{Scenario Length:} $120.0$ seconds
+        \item \textbf{Maximum Sources:} $4$ sources (speech)
+        \item \textbf{Acoustics:} RIRs simulated via PyRoomAcoustics (PRA) \& diffuse noise via ANF-generator
+        \item \textbf{Audio Data:} Sources: Librispeech \& Noise: DEMAND
+        \item \textbf{Reverberation time:} uniform in $[0.2, 0.8]$ s
+        \item \textbf{Signal-to-Noise Ratios (SNR):} uniform in $[5.0, 20.0]$ dB
+        \item \textbf{Source Power Difference:} uniform in $[0, 5]$ dB
+        \item \textbf{Source Dynamics:} Random activations/deactivations every $[1, 10]$ s
+    \end{itemize}
+    \vspace{1em}
+    \textbf{Ground Truth}
+    \begin{itemize}
+        \item VAD with $\SI{-30}{\dB}$ power threshold and gap-filling time between 0ms and 200ms (oracle ground truth)
+        \item Activity labels: $a_{s,t} \in \{0,1\}$ for each source $s$ and frame $t$
+        \item Source count: $S_t = \sum_{s=1}^{S_{max}} a_{s,t}$
+    \end{itemize}   
+\end{frame}
+
+% ----------------------------------------------------------------------
+% Results (Transformer)
+% ----------------------------------------------------------------------
+\begin{frame}{Part 0 - Results: Transformer Architecture}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth,height=0.8\textheight,keepaspectratio]{figures_J3/results_visualization_transformer.png}
+    \end{figure}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% Results (GRU)
+% ----------------------------------------------------------------------
+\begin{frame}{Part 0 - Results: GRU Architecture}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth,height=0.8\textheight,keepaspectratio]{figures_J3/results_visualization_gru.png}
+    \end{figure}
+\end{frame}
+
+
+% ----------------------------------------------------------------------
+% 16. AMI Corpus
+% ----------------------------------------------------------------------
+\begin{frame}{Real-World Evaluation: The AMI Meeting Corpus}
+    \textbf{Why AMI?}
+    \begin{itemize}
+        \item Over 100 hours of multi-party meetings in realistic rooms.
+        \item The definitive benchmark for real-world speech separation and source counting.
+    \end{itemize}
+    \vspace{1.5em}
+    \textbf{Our Implementation Highlights}
+    \begin{itemize}
+        \item \textbf{Exact Kaldi Full-ASR Partition:} We rigorously matched Cornell's standard split (136 Train / 18 Dev / 16 Eval meetings).
+        \item \textbf{TNO Exclusion:} We omit the problematic TNO (\texttt{TS}) meetings from the evaluation subsets, identical to Cornell et al.
+        \item \textbf{Dynamic Channel Robustness:} Handled Idiap's missing \texttt{Array2} channels on the fly via our new dynamic 4-to-8 channel loading capability without crashing.
+    \end{itemize}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% 17. Summary (was 16)
+% 17. Summary
+% ----------------------------------------------------------------------
+\begin{frame}{Summary}
+    \begin{itemize}
+        \item \textbf{The Goal:} A frame-causal, online source count estimator robust to unseen array configurations.
+        \item \textbf{The Architecture:} A STFT-based pipeline processing features via channel combinators and a transformer sequence classifier.
+        \item \textbf{The Roadmap:}
+              \begin{itemize}
+                  \item \textbf{Part 0:} Confirm benefit of combined spatial + spectral features.
+                  \item \textbf{Part 1 ($4\times4$ matrix):} Quantify performance degradation on unseen arrays across Circular/Random geometries and fixed/variable number of microphones.
+                  \item \textbf{Part 2:} Evaluate microphone array geometry conditioning to improve generalization on unseen arrays.
+              \end{itemize}
+    \end{itemize}
+    \vspace{2em}
+    \begin{center}
+        \textbf{Thank You!} \\
+        Questions \& Discussion
+    \end{center}
+\end{frame}
+
+\end{document}

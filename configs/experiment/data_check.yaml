@@ -9,20 +9,20 @@ defaults:
 
 trainer:
   max_epochs: 2
-  limit_train_batches: 2
-  limit_val_batches: 2
-  limit_test_batches: 2
+  limit_train_batches: 20
+  limit_val_batches: 20
+  limit_test_batches: 20
 
 dataset:
   # We must provide these dummy variables because BaseDataModule strictly requires them in its __init__,
   # even though AMIDataModule (for real-world data) overrides prepare_data() and ignores them.
   id: "ami_sanity_check"
   batch_size: 2
-  num_scenarios: [4, 4, 4]
+  num_scenarios: [40, 40, 40]
   reset: True
   generation_config:
     save_signal_components: True 
-  train_items_per_epoch: 2
+  train_items_per_epoch: 40
   train_meetings: ["EN2001a"]
   val_meetings: ["EN2001a"]
   test_meetings: ["EN2001a"]

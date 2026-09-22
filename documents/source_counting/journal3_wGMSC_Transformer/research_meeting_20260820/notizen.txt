@@ -1,0 +1,14 @@
+Journal 2
+
+target source extraction
+
+ground truth RTF definition genau schreiben was ich gemacht habe (eigentlihc doch white noise rir rtf oder ?)
+
+
+mache ich mimo oder miso LCMV beamforming -> einmal bitte checken
+
+
+Bei der metric aggregation nochmal checkn was ich genau mache
+
+Beim einriechen alles vorberietten und dann ncohmal simon nach feedback fragen
+

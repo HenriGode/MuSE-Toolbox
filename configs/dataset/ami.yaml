@@ -21,16 +21,18 @@ database:
 # Chunking and Inference Parameters
 chunk_length_s: 7.0
 min_context_s: 2.0
-steps_per_epoch: 5000
+train_items_per_epoch: 5000
 
 # Single Speaker Data Augmentation Config
 augmentation:
   enabled: true
-  prob_augmentation: 0.333
-  prob_1spk: 0.1
-  prob_2spk: 0.2
-  prob_3spk: 0.3
-  prob_4spk: 0.4
+  prob_augmentation: 0.5
+  prob_1spk: 0.0
+  prob_2spk: 0.33
+  prob_3spk: 0.33
+  prob_4spk: 0.33
+  relative_sir_range: [-10.0, 10.0]
+  sir_std: 4.0
 
 # Arrays to load
 arrays:
@@ -40,7 +42,7 @@ arrays:
 generation_config:
   max_sources: 4
 
-# Official AMI Scenario-Only Split
+# Official AMI Full-corpus-ASR Split
 train_meetings:
   - EN2001a
   - EN2001b

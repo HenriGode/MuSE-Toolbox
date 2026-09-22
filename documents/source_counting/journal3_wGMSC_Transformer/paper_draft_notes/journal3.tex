@@ -1,0 +1,407 @@
+\documentclass[lettersize,journal]{IEEEtran}
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{array}
+\usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{cite}
+\hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
+% updated with editorial comments 8/9/2021
+
+% ------------------------
+
+\usepackage[acronym,shortcuts]{glossaries}
+\newacronym[firstplural=spatio-temporal covariance matrices (STCMs)]{STCM}{STCM}{spatio-temporal covariance matrix}
+\newacronym{BLCMP}{BLCMP}{binaural linearly constrained minimum power}
+\newacronym{RIR}{RIR}{room impulse response}
+\newacronym{LCMP}{LCMP}{linearly constrained minimum power}
+\newacronym{wBLCMP}{wBLCMP}{weighted binaural linearly constrained minimum power}
+\newacronym{STFT}{STFT}{short-time Fourier transform}
+\newacronym{CTF}{CTF}{convolutive transfer function}
+\newacronym{MTF}{MTF}{multiplicative transfer function}
+\newacronym{RTF}{RTF}{relative transfer function}
+\newacronym{MCLP}{MCLP}{multi channel linear prediction}
+\newacronym{MPDR}{MPDR}{minimum power distortionless response}
+\newacronym{MVDR}{MVDR}{minimum variance distortionless response}
+\newacronym{LCMV}{LCMV}{linearly constrained minimum variance}
+\newacronym{WPD}{WPD}{weighted power minimization distortionless response}
+\newacronym{WPE}{WPE}{weighted prediction error}
+\newacronym{TVG}{TVG}{time-varying complex circular Gaussian}
+\newacronym{MISO}{MISO}{multiple-input single-output}
+\newacronym{MIMO}{MIMO}{multiple-input multiple-output}
+\newacronym{SPP}{SPP}{speech presence probability}
+\newacronym{PESQ}{PESQ}{perceptual evaluation of speech quality}
+\newacronym{FWSSNR}{FWSSNR}{frequency-weighted segmental signal-to-noise ratio}
+\newacronym{CW}{CW}{covariance whitening}
+\newacronym{CS}{CS}{covariance subtraction}
+\newacronym{VAD}{VAD}{voice activity detection}
+\newacronym{SAD}{SAD}{source activity detection}
+\newacronym{UCB}{UCB}{unified convolutional beamformer}
+\newacronym{IRLS}{IRLS}{iteratively reweighted least squares}
+\newacronym{MFMVDR}{MFMVDR}{multi-frame minimum variance distortionless response}
+\newacronym{BMFMVDR}{BMFMVDR}{binaural MFMVDR}
+\newacronym{TCN}{TCN}{temporal convolutional network}
+\newacronym{DNN}{DNN}{deep neural network}
+\newacronym{SNR}{SNR}{signal-to-noise ratio}
+\newacronym{DRC}{DRC}{dynamic range compression}
+\newacronym{HGR}{HGR}{half-gain rule}
+\newacronym{CEC1}{CEC1}{Clarity Enhancement Challenge}
+\newacronym{MBDRC}{MBDRC}{multi-band dynamic range compressor}
+\newacronym{MBSTOI}{MBSTOI}{modified binaural short-term objective intelligibility}
+\newacronym{SD-SDR}{SD-SDR}{scale-dependent signal-to-distortion ratio}
+\newacronym{IFC}{IFC}{inter-frame correlation}
+\newacronym{BTE}{BTE}{behind-the-ear}
+\newacronym{SIR}{SIR}{signal-to-interferer ratio}
+\newacronym{SINR}{SINR}{signal-to-interferer-and-noise ratio}
+\newacronym{SRR}{SRR}{signal-to-reverberation ratio}
+\newacronym{DUR}{DUR}{desired-to-undesired ratio}
+\newacronym{wMPDR}{wMPDR}{weighted \gls{MPDR}}
+\newacronym{SVD}{SVD}{singular value decomposition}
+\newacronym{LS}{LS}{least-squares}
+\newacronym{CBW}{CBW}{covariance blocking and whitening}
+\newacronym{SRI}{SRI}{successive \gls{RTF} identification}
+\newacronym{BOP-SRI}{BOP-SRI}{blind oblique projection \gls{SRI}}
+\newacronym{BOP}{BOP}{blind oblique projection}
+\newacronym{EBOP}{EBOP}{extended blind oblique projection}
+\newacronym[\glslongpluralkey=power spectral densities]{PSD}{PSD}{power spectral density}
+\newacronym{HA}{HA}{Hermitian angle}
+\newacronym{MHA}{MHA}{mean Hermitian angle}
+\newacronym{WMHA}{WMHA}{weighted mean Hermitian angle}
+\newacronym{GMSC}{GMSC}{generalized magnitude-squared coherence}
+\newacronym{LTASS}{LTASS}{long-term average speech spectrum}
+\newacronym{EM}{EM}{expectation maximization}
+\newacronym{CFA}{CFA}{confirmatory factor analysis}
+\newacronym{DOA}{DOA}{direction-of-arrival}
+\newacronym{BOPO}{BOPO}{BOP using orthogonal additional vectors}
+\newacronym{BOP-S}{BOP-S}{BOP with noise subtraction}
+\newacronym{BOP-W}{BOP-W}{BOP with noise whitening}
+\newacronym{BOPO-S}{BOPO-S}{BOPO with noise subtraction}
+\newacronym{BOPO-W}{BOPO-W}{BOPO with noise whitening}
+\newacronym{CWu}{CWu}{covariance whitening with undesired covariance}
+\newacronym{GSS}{GSS}{guided source separation}
+\newacronym{RNN}{RNN}{recurrent neural network}
+\newacronym{GRU}{GRU}{gated recurrent unit}
+\newacronym{IVA}{IVA}{independent vector analysis}
+\newacronym{AuxIVA}{AuxIVA}{auxiliary function based independent vector analysis}
+\newacronym{ISS}{ISS}{iterative source steering}
+\newacronym{CGMM}{CGMM}{complex Gaussian mixture model}
+\newacronym{cACGMM}{cACGMM}{complex angular central Gaussian mixture model}
+\newacronym{TAC}{TAC}{transform-average-concatenate}
+\newacronym{MSE}{MSE}{mean squared error}
+\newacronym{MAE}{MAE}{mean absolute error}
+\newacronym{F1}{F1}{F1 score}
+\newacronym{AMI}{AMI}{Augmented Multi-party Interaction}
+\newacronym{BRUDEX}{BRUDEX}{binaural room impulse responses with uniformly distributed external microphones}
+
+%-------------------------------------
+
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+\crefname{equation}{}{}
+\newcommand{\crefrangeconjunction}{--}
+\crefformat{appsec}{Appendix #2#1#3} % ADD this line to define the appendix section format
+\usepackage{amssymb,mathtools,nicefrac,bm}
+
+%--------------------------------
+
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}
+\makeatletter
+\let\oldabs\abs
+\def\abs{\@ifstar{\oldabs}{\oldabs*}}
+\let\oldnorm\norm
+\def\norm{\@ifstar{\oldnorm}{\oldnorm*}}
+\makeatother
+
+\usepackage{siunitx}
+\sisetup{detect-weight=true, detect-family=true}
+
+\begin{document}
+
+\title{Geometry-Agnostic and Geometry-Informed Online Sound Source Counting}
+
+\author{
+  Henri Gode,~\IEEEmembership{Graduate Student member,~IEEE,}
+  and Simon Doclo,~\IEEEmembership{Senior Member,~IEEE}% <-this % stops a space
+  \thanks{
+    This work was funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under
+    Germany's Excellence Strategy – EXC 2177/2 - Project ID 390895286.
+  }% <-this % stops a space
+  \thanks{
+    The authors are with the Department of Medical Physics and Acoustics
+    and the Cluster of Excellence "Hearing4all.connects", Carl von Ossietzky Universität Oldenburg, 26129 Oldenburg, Germany
+    (e-mail: \href{mailto:henri.gode@uni-oldenburg.de}{\texttt{henri.gode@uni-oldenburg.de}};
+    \href{mailto:simon.doclo@uni-oldenburg.de}{\texttt{simon.doclo@uni-oldenburg.de}}).
+  }% <-this % stops a space
+
+
+  %\thanks{Manuscript received April 19, 2021; revised August 16, 2021.}
+}
+
+% The paper headers
+\markboth{Journal of \LaTeX\ Class Files,~Vol.~14, No.~8, August~2021}%
+{Shell \MakeLowercase{\textit{et al.}}: A Sample Article Using IEEEtran.cls for IEEE Journals}
+
+\IEEEpubid{0000--0000/00\$00.00~\copyright~2021 IEEE}
+% Remember, if you use this you must call \IEEEpubidadjcol in the second
+% column for its text to clear the IEEEpubid mark.
+
+\maketitle
+
+\begin{abstract}
+  Accurately estimating the number of active sound sources in real-time is a fundamental prerequisite for multi-microphone acoustic signal processing tasks, such as source separation, localization, and assistive listening. Existing deep neural network (DNN)-based source counting methods often rely on long observation windows that introduce unacceptable latency for online applications, or they are strictly constrained to fixed microphone array geometries. In this paper, we propose a strictly STFT-frame causal, online acoustic sound source counting system that handles a variable number of input channels and dynamically adapts to arbitrary array geometries. Our approach leverages a causal Transformer-based architecture combined with robust spatial features, specifically the Whitened Generalized Magnitude Squared Coherence (GMSC). By employing time-reversed whitening, the network tracks both source activations and deactivations by measuring spatial coherence. Unlike traditional overlapped speech detection systems that rely on linguistic alignment, our model is trained on a purely acoustic power-based ground truth, allowing it to generalize to diverse, non-speech acoustic sources. To achieve array geometry agnosticism, the system utilizes an early attention-pooling mechanism to unify variable microphone counts, alongside a novel late-fusion strategy that injects physical microphone coordinates directly into the network via Feature-wise Linear Modulation (FiLM) layers. We comprehensively evaluate the proposed geometry-conditioned system through zero-shot testing on both simulated environments and real-world datasets, including BRUDEX, CHiME-6, and AMI. Our results demonstrate the effectiveness of combining strictly causal Transformers with physical coordinate conditioning to achieve robust, real-time sound source counting across mismatched and dynamic array configurations.
+\end{abstract}
+
+\begin{IEEEkeywords}
+  Online source counting, geometry-agnostic, geometry-informed, spatial \& spectral features
+\end{IEEEkeywords}
+
+\section{Introduction}
+% Start with a broad context: the importance of sound source counting for downstream tasks like localization, separation, and hearing aids.
+\IEEEPARstart{T}{his} is the paper draft of Henri's journal paper. Following~\cite{gode2026closedform}
+
+\subsection{Motivation}
+% Discuss the challenges of real-time, online processing and the strict latency constraints for edge devices (e.g., binaural hearing aids).
+
+\subsection{Related Work}
+% Group the literature review into three themes:
+% 1. DNN-based Speaker Counting & OSD (Cornell et al. baseline, TS-VAD, CountNet).
+% 2. Spatial Features for Source Counting (Gode & Doclo baseline, GMSC, eigenvalue methods).
+% 3. Multichannel Combination & Geometry Agnosticism (Mariotte et al. SACC, channel pooling).
+
+\subsection{Contributions}
+% Clearly list your novelties:
+% 1. A strictly STFT-frame causal Transformer architecture.
+% 2. Geometry agnosticism via attention-pooling.
+% 3. Late fusion geometry-conditioning using FiLM and physical coordinates.
+% 4. Time-reversed Whitened GMSC for source deactivation.
+% 5. Purely acoustic power-based training for general sound source counting.
+
+
+\section{Signal Model and Problem Formulation}
+% Formulate the mathematics of the microphone signals and the STFT domain representations.
+
+\subsection{Acoustic Sound Source Counting Framework}
+% Define the objective: estimating the number of active sources $K_t$ per frame.
+% CRITICAL: Explicitly contrast your "acoustic ground truth" (power-based VAD detecting all sound energy, e.g., coughs, radios) against traditional text-driven linguistic alignment (e.g., MFA).
+
+
+\section{Feature Extraction}
+% Detail the inputs that will be fed into the network.
+
+\subsection{Spectral Features}
+% Briefly describe the single-channel Mel-filterbanks (80 filters) used as the baseline spectral representation.
+
+\subsection{Spatial Coherence Features: Whitened GMSC}
+% From the Gode & Doclo baseline.
+\subsubsection{Source Activation Detection}
+% Detail the forward whitening process and how it creates a rank-1 update when a new source appears.
+\subsubsection{Source Deactivation Detection}
+% Detail your proposed time-reversed whitening approach to track sources dropping out.
+
+\subsection{Baseline Spatial Features for Comparison}
+% Mention IPD (from Cornell et al.) and pure multi-channel STFT, which will be used in the ablation studies later.
+
+
+\section{Proposed Geometry-Conditioned Architecture}
+% The core technical contribution section (Phase 1, 2, and 3 of your project plan).
+
+\subsection{Strictly Causal Transformer Base}
+% Describe the Transformer blocks. Explain the strict causality constraint: how the "cat-pool" operation is modified to only concatenate *past* frames, ensuring zero look-ahead.
+
+\subsection{Array Geometry Agnosticism via Attention-Pooling}
+% Detail how variable microphone counts (2, 4, 6, 8 mics) are handled. Explain the early channel-pooling mechanism (Transform-Average-Concatenate (TAC) or Self-Attention Channel Combinator).
+
+\begin{itemize}
+  \item zero padding
+  \item \gls{TAC}
+  \item learnable linear layer
+  \item self-attention combinator
+  \item feature inherent combination (GMSC)
+\end{itemize}
+
+\subsubsection{}
+
+\subsection{Geometry Conditioning and Fusion Strategies}
+% Explain how the physical microphone array coordinates are injected.
+
+\subsubsection{Early Fusion}
+% Describe concatenating spectral and spatial features at the input level.
+\subsubsection{Late Fusion via FiLM Layers}
+% Detail your core novelty: injecting geometry coordinate embeddings directly into the Transformer blocks using Feature-wise Linear Modulation (FiLM).
+
+\subsection{Loss function}
+
+Output: classifier $k_t \in \{0,\dots,K_{max}\}$ for each frame
+
+\begin{itemize}
+  \item cross entropy loss
+  \item smoothed loss~\cite{li2025temporal}?
+  \item weighted loss~\cite{li2025temporal}?
+  \item label smoothing~\cite{eliav2024concurrent, muller2019when}
+  \item cost sensitve regularization~\cite{eliav2024concurrent, galdran2020cost}
+\end{itemize}
+
+
+\section{Datasets}
+
+\subsection{Synthetic Dataset}
+
+\subsection{BRUDEX}
+A comprehensive evaluation dataset is dynamically simulated using the \gls{BRUDEX} dataset~\cite{fejgin2023brudex}. The \gls{BRUDEX} dataset provides \glspl{RIR} and multi-channel noise recordings captured in various reverberant environments, including \gls{BTE} hearing aids with two microphones on each side.
+
+In this study, dynamic acoustic scenarios are constructed using clean speech utterances sourced from the LibriSpeech corpus~\cite{panayotov2015librispeech}. Each simulated acoustic scenario has a duration of \SI{120.0}{\second} and features up to $4$ conversational partners. The speakers naturally start and stop talking, creating highly overlapping speech. A scenario typically begins with a short period containing only background noise, lasting between \SI{1.0}{\second} and \SI{5.0}{\second}, before the speakers begin their conversation. The onset and offset of speech for each conversational partner occur at random intervals, with the duration between any two consecutive conversational events varying between \SI{1.0}{\second} and \SI{10.0}{\second}. This stochastic conversational dynamic continuously alters the number of concurrently active speakers throughout the scenario. The physical microphone array configuration is randomly selected for each scenario from a subset of available array geometries. These geometries include various combinations of the \gls{BTE} and in-ear hearing aid microphones, resulting in varying numbers of input channels and distinct spatial coordinates.
+
+The data is partitioned into distinct training, validation, and testing sets with non-overlapping spatial and acoustic parameters. For the spatial distribution of the active sound sources, the directions of arrival are strictly partitioned. The training set utilizes directions of arrival of \SI{30}{\degree}, \SI{-60}{\degree}, \SI{120}{\degree}, and \SI{-150}{\degree}. The validation set utilizes \SI{-30}{\degree}, \SI{90}{\degree}, \SI{150}{\degree}, and \SI{180}{\degree}. Finally, the testing set utilizes \SI{0}{\degree}, \SI{60}{\degree}, \SI{-90}{\degree}, and \SI{-120}{\degree}. Furthermore, the environmental noise conditions are strictly separated: the training set is corrupted by babble and white noise, the validation set by babble noise, and the testing set by cafeteria noise. Across all scenarios, the \gls{SNR} ranges continuously between \SI{5.0}{\decibel} and \SI{20.0}{\decibel}, and the relative source powers are distributed within an interval of \SI{-5.0}{\decibel} to \SI{5.0}{\decibel}. The acoustic environments are rendered using the \textit{low} reverberation condition provided by the \gls{BRUDEX} dataset.
+
+The ground truth speech activity in this simulated dataset is defined purely based on acoustic power. The ground truth speech activity is derived by applying an energy threshold of \SI{-30}{\decibel} to the isolated clean speech signals. Silences shorter than \SI{1.0}{\second} are neglected, ensuring continuous speech activity segments during fluent speech.
+
+\subsection{CHiME-6}
+
+\subsection{AMI meeting corpus}
+The \gls{AMI} meeting corpus~\cite{mccowan2005ami} contains approximately \SI{100}{\hour} of recorded meetings, featuring sessions with $3$ to $5$ participants. The recordings were conducted in three distinct instrumented meeting rooms (Edinburgh, Idiap, and TNO), resulting in heterogeneous distant microphone array configurations across the dataset. The Edinburgh room features two $8$-channel uniform circular arrays with a radius of \SI{10}{\centi\meter} (Array $1$ and Array $2$). The Idiap room contains one $8$-channel uniform circular array on the table (Array $1$) and one $4$-channel uniform circular array mounted on the ceiling (Array $2$). Finally, the TNO room is equipped with an $8$-channel uniform circular array on the table (Array $1$) and a $10$-channel linear array (Array $2$).
+
+To maintain consistency with recent literature on overlapped speech detection and speaker counting in distant microphone scenarios, the data preparation follows the methodology proposed by Cornell et al.~\cite{cornell2022overlapped}. The ground truth \gls{SAD} labels are derived directly from the official manual word-level annotations (\texttt{ami\_public\_manual\_1.0.1}), which were reliably obtained by human annotators utilizing the individual close-talk headset microphones. The division of the recorded meetings into training, validation, and testing sets strictly adheres to the official \gls{AMI} Full-corpus-ASR partition, which includes meetings from all three rooms.
+
+During training, a dynamic data augmentation strategy is employed to expose the model to a well-distributed variety of overlap conditions. For \SI{50}{\percent} of the training data, unaltered contiguous chunks of \SI{7.0}{\second} are sampled from random temporal positions within the training meetings. For the remaining \SI{50}{\percent} of the training data, dynamically augmented chunks of \SI{7.0}{\second} are generated. These augmented chunks are constructed by sampling isolated single-speaker chunks from different meetings and mixing the isolated single-speaker chunks together. The augmented chunks contain $2$, $3$, or $4$ concurrent speakers, each with a probability of approximately \SI{33}{\percent}. To simulate acoustic variations, each additional single-speaker chunk is mixed with a relative \gls{SIR} shift. The relative \gls{SIR} shift is drawn from a Gaussian distribution ($\mu = \SI{0}{\decibel}$, $\sigma = \SI{4.0}{\decibel}$) bounded between \SI{-10}{\decibel} and \SI{10}{\decibel}. To prevent numerical overflow, if the peak amplitude of the augmented chunk exceeds $0.99$, the augmented chunk is uniformly scaled to a target peak amplitude uniformly drawn from the interval $[0.5, 0.99]$. 
+
+For validation and testing, contiguous chunks of \SI{7.0}{\second} are extracted sequentially. A hop length of \SI{5.0}{\second} is used, resulting in a consistent overlap of \SI{2.0}{\second} between adjacent chunks. This sequential extraction ensures that the validation chunks and the test chunks are processed in the correct temporal order for continuous evaluation.
+
+
+\section{Experimental Setup}
+% Detail how the models are trained and what they are tested on.
+
+\subsection{Implementation Details}
+All audio recordings across all datasets are processed at a uniform sampling frequency of \SI{8}{\kilo\hertz}.
+
+\subsection{Acoustic Ground Truth and Synthetic Dataset Generation}
+% Describe the PyRoomAcoustics simulation (Phase 1 & 2) using LibriSpeech and DEMAND. Explain how the -30dB power-based VAD with 200ms bridging is applied to isolated sources before mixing to create the acoustic labels.
+
+\subsection{Real-World Evaluation Datasets}
+% Introduce the datasets used for zero-shot testing:
+% 1. BRUDEX (binaural hearing aids).
+% 2. CHiME-6 (multi-room dinner party).
+% 3. AMI (meeting room).
+
+\subsection{Evaluation Metrics}
+% Frame-wise accuracy, Mean Absolute Error (MAE), Mean Squared Error (MSE), Confusion Matrices, F1-scores, and the delay distribution of detected activations/deactivations.
+For multi-array datasets, such as the \gls{AMI} meeting corpus, evaluation is performed by averaging the output posterior probabilities generated independently for each array within a room, prior to determining the final discrete speaker count. This probability-level fusion leverages the spatial diversity of the distributed arrays to improve the overall robustness and accuracy of the system, mitigating localized acoustic degradations. This approach follows the evaluation protocol established by Cornell et al.~\cite{cornell2022overlapped}.
+
+\begin{itemize}
+  \item Frame-wise accuracy
+  \item \gls{MAE}
+  \item \gls{MSE}
+  \item Confusion Matrices
+  \item Precision, Recall and \gls{F1}
+  \item Delay distribution of detected activations/deactivations
+\end{itemize}
+
+
+
+
+
+\subsection{Training Details}
+% Hyperparameters, PyTorch Lightning setup, loss functions, etc.
+
+
+\section{Results and Discussion}
+% The culmination of Phase 4 of your project plan.
+
+\subsection{Feature Ablation: Spectral vs. Spatial}
+% Compare the performance of Mel-filterbanks vs. IPD vs. Whitened GMSC. Show the benefit of combining activation and deactivation features.
+
+\subsection{Fusion Strategies: Early vs. Late Conditioning}
+% Directly compare early fusion against your proposed FiLM-based late fusion for geometry coordinate injection.
+
+\subsection{Robustness to Variable Microphone Counts}
+% Evaluate how well the attention-pooling handles a mismatch in the number of microphones between training and inference (e.g., training on 4 mics, testing on 2 or 8).
+
+\subsection{Zero-Shot Evaluation on Real-World Datasets}
+% Present the performance on BRUDEX, CHiME-6, and AMI. Discuss how the system generalizes from synthetic acoustic power training to real-world messy audio.
+
+\subsection{System Latency and Causality Impact}
+% Compare the strictly causal system against a non-causal baseline (e.g., with future look-ahead) to quantify the trade-off between strict online latency and accuracy.
+
+
+\section{Conclusion}
+% Summarize the findings, reiterate that a causal, geometry-conditioned DNN with Whitened
+
+
+
+
+
+
+
+
+
+
+
+
+
+% \section*{Acknowledgments}
+% This should be a simple paragraph before the References to thank those individuals and institutions who have supported your work on this article.
+
+
+
+% {\appendix[Proof of the Zonklar Equations]
+%   Use $\backslash${\tt{appendix}} if you have a single appendix:
+%   Do not use $\backslash${\tt{section}} anymore after $\backslash${\tt{appendix}}, only $\backslash${\tt{section*}}.
+%   If you have multiple appendixes use $\backslash${\tt{appendices}} then use $\backslash${\tt{section}} to start each appendix.
+%   You must declare a $\backslash${\tt{section}} before using any $\backslash${\tt{subsection}} or using $\backslash${\tt{label}} ($\backslash${\tt{appendices}} by itself
+%   starts a section numbered zero.)}
+
+
+
+%{\appendices
+%\section*{Proof of the First Zonklar Equation}
+%Appendix one text goes here.
+% You can choose not to have a title for an appendix if you want by leaving the argument blank
+%\section*{Proof of the Second Zonklar Equation}
+%Appendix two text goes here.}
+
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{J3bib}
+
+
+\newpage
+
+% \section{Biography Section}
+% If you have an EPS/PDF photo (graphicx package needed), extra braces are
+% needed around the contents of the optional argument to biography to prevent
+% the LaTeX parser from getting confused when it sees the complicated
+% $\backslash${\tt{includegraphics}} command within an optional argument. (You can create
+% your own custom macro containing the $\backslash${\tt{includegraphics}} command to make things
+% simpler here.)
+
+% \vspace{11pt}
+
+% \bf{If you include a photo:}\vspace{-33pt}
+% \begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{fig1}}]{Michael Shell}
+%   Use $\backslash${\tt{begin\{IEEEbiography\}}} and then for the 1st argument use $\backslash${\tt{includegraphics}} to declare and link the author photo.
+%   Use the author name as the 3rd argument followed by the biography text.
+% \end{IEEEbiography}
+
+% \vspace{11pt}
+
+% \bf{If you will not include a photo:}\vspace{-33pt}
+% \begin{IEEEbiographynophoto}{John Doe}
+%   Use $\backslash${\tt{begin\{IEEEbiographynophoto\}}} and the author name as the argument followed by the biography text.
+% \end{IEEEbiographynophoto}
+
+
+
+
+% \vfill
+
+\end{document}
+
+

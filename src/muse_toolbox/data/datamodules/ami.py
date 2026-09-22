@@ -30,7 +30,7 @@ class AMIScenarioGeneratorDataset(Dataset):
         split: str,
         chunk_length_s: float,
         min_context_s: float,
-        steps_per_epoch: int,
+        train_items_per_epoch: int,
         augmentation: dict,
         arrays: list[str],
         fs: int,
@@ -41,7 +41,7 @@ class AMIScenarioGeneratorDataset(Dataset):
         self.split = split
         self.chunk_length_s = chunk_length_s
         self.min_context_s = min_context_s
-        self.steps_per_epoch = steps_per_epoch
+        self.train_items_per_epoch = train_items_per_epoch
         self.augmentation = augmentation
         self.arrays = arrays
         self.fs = fs
@@ -62,8 +62,8 @@ class AMIScenarioGeneratorDataset(Dataset):
     def _init_mmaps(self):
         for meeting_id in self.meeting_ids:
             for array_id in self.arrays:
-                audio_path = self.data_dir / f"{meeting_id}_{array_id}_audio.npy"
-                sad_path = self.data_dir / f"{meeting_id}_{array_id}_sad.npy"
+                audio_path = self.data_dir / f"{meeting_id}_{array_id}_{self.fs}Hz_audio.npy"
+                sad_path = self.data_dir / f"{meeting_id}_{array_id}_{self.fs}Hz_sad.npy"
                 
                 if audio_path.exists() and sad_path.exists():
                     audio_mmap = np.load(audio_path, mmap_mode='r')
@@ -79,7 +79,7 @@ class AMIScenarioGeneratorDataset(Dataset):
                     
         # Load single speaker index
         if self.augmentation and self.augmentation.get("enabled", False) and self.split == 'train':
-            idx_path = self.data_dir / "single_speaker_index.npy"
+            idx_path = self.data_dir / f"single_speaker_index_{self.fs}Hz.npy"
             if idx_path.exists():
                 self.single_speaker_index = np.load(idx_path).tolist()
                 
@@ -118,7 +118,7 @@ class AMIScenarioGeneratorDataset(Dataset):
 
     def __len__(self):
         if self.split == 'train':
-            return self.steps_per_epoch
+            return self.train_items_per_epoch
         return len(self.grid)
 
     def _get_random_single_speaker_chunk(self, key, speaker_id):
@@ -175,19 +175,55 @@ class AMIScenarioGeneratorDataset(Dataset):
             mixed_audio = np.zeros_like(first_aud, dtype=np.float32)
             mixed_sad = np.zeros((4, self.chunk_samples), dtype=np.bool_) # Max 4 speakers
             
+            # Speaker 1 acts as anchor, scale multiplier is 1.0
             mixed_audio += first_aud
             mixed_sad[0, :] = first_act
+            constituent_audios = [first_aud]
+            
+            sir_min, sir_max = self.augmentation.get("relative_sir_range", [-10.0, 10.0])
+            sir_std = self.augmentation.get("sir_std", 4.0)
+            
+            speaker_ids_list = [speaker_ids[0]]
+            gains_list = [1.0]
             
             # Mix in the rest of the distinct speakers
             for i in range(1, num_speakers):
                 aud, act = self._get_random_single_speaker_chunk(key, speaker_ids[i])
-                mixed_audio += aud
+                constituent_audios.append(aud)
+                
+                # Sample relative dB shift and convert to linear scale
+                db_shift = random.gauss(0.0, sir_std)
+                db_shift = max(sir_min, min(db_shift, sir_max))
+                gain = 10.0 ** (db_shift / 20.0)
+                
+                mixed_audio += aud * gain
                 mixed_sad[i, :] = act
+                
+                speaker_ids_list.append(speaker_ids[i])
+                gains_list.append(gain)
+                
+            # Global Clipping Protection
+            max_peak = np.max(np.abs(mixed_audio))
+            clipping_ratio = 1.0
+            if max_peak > 0.99:
+                target_peak = random.uniform(0.5, 0.99)
+                clipping_ratio = target_peak / max_peak
+                mixed_audio = mixed_audio * clipping_ratio
                     
             audio_tensor = torch.from_numpy(mixed_audio).float()
             sad_tensor = torch.from_numpy(mixed_sad)
             meeting_id, array_id = key.split('_')
             start_idx = 0
+            
+            scenario_params = {
+                "augmentation_applied": True,
+                "speaker_ids": speaker_ids_list,
+                "gains": gains_list,
+                "clipping_ratio": clipping_ratio
+            }
+            
+            # Stack the individual speakers for debugging/visualization
+            constituent_audio_tensor = torch.from_numpy(np.stack(constituent_audios)).float()
         elif self.split == 'train':
             # Random sampling without mix
             key = random.choice(self.valid_meetings)
@@ -203,6 +239,8 @@ class AMIScenarioGeneratorDataset(Dataset):
             sad_chunk = self.mmap_sad[key][:, start_idx:end_idx].copy()
             audio_tensor = torch.from_numpy(audio_chunk).float()
             sad_tensor = torch.from_numpy(sad_chunk)
+            constituent_audio_tensor = None
+            scenario_params = {"augmentation_applied": False}
         else:
             # Deterministic grid
             key, start_idx = self.grid[idx]
@@ -213,6 +251,8 @@ class AMIScenarioGeneratorDataset(Dataset):
             sad_chunk = self.mmap_sad[key][:, start_idx:end_idx].copy()
             audio_tensor = torch.from_numpy(audio_chunk).float()
             sad_tensor = torch.from_numpy(sad_chunk)
+            constituent_audio_tensor = None
+            scenario_params = {"augmentation_applied": False}
             
         # Downsample to sad_frames using STFT transform if available
         if self.transform is not None:
@@ -224,7 +264,7 @@ class AMIScenarioGeneratorDataset(Dataset):
             
         meta = {
             "scenario_id": f"{meeting_id}_{array_id}_{start_idx / self.fs:.2f}",
-            "scenario_params": {},
+            "scenario_params": scenario_params,
             "meeting_id": meeting_id,
             "array_id": array_id,
             "start_time": start_idx / self.fs,
@@ -232,6 +272,9 @@ class AMIScenarioGeneratorDataset(Dataset):
             "sad_frames": sad_frames,
             "source_count": source_count
         }
+        
+        if constituent_audio_tensor is not None:
+            meta["single_source_components"] = constituent_audio_tensor
         
         return {"input": audio_tensor, "meta": meta}
 
@@ -249,7 +292,7 @@ class AMIDataModule(BaseDataModule):
         test_meetings: list[str],
         chunk_length_s: float,
         min_context_s: float,
-        steps_per_epoch: int,
+        train_items_per_epoch: int,
         arrays: list[str],
         augmentation: dict,
         sampling_frequency: int,
@@ -263,7 +306,7 @@ class AMIDataModule(BaseDataModule):
         self.test_meetings = test_meetings
         self.chunk_length_s = chunk_length_s
         self.min_context_s = min_context_s
-        self.steps_per_epoch = steps_per_epoch
+        self.train_items_per_epoch = train_items_per_epoch
         self.arrays = arrays
         self.augmentation = augmentation
         self.sampling_frequency = sampling_frequency
@@ -288,8 +331,8 @@ class AMIDataModule(BaseDataModule):
         
         for meeting_id in tqdm(all_meetings, desc="Precomputing AMI"):
             for array_id in self.arrays:
-                audio_path = self.precomputed_dir / f"{meeting_id}_{array_id}_audio.npy"
-                sad_path = self.precomputed_dir / f"{meeting_id}_{array_id}_sad.npy"
+                audio_path = self.precomputed_dir / f"{meeting_id}_{array_id}_{self.sampling_frequency}Hz_audio.npy"
+                sad_path = self.precomputed_dir / f"{meeting_id}_{array_id}_{self.sampling_frequency}Hz_sad.npy"
                 
                 if audio_path.exists() and sad_path.exists():
                     continue
@@ -313,7 +356,7 @@ class AMIDataModule(BaseDataModule):
                 
         # Build single-speaker index for augmentation
         if self.augmentation.get('enabled', False):
-            index_path = self.precomputed_dir / "single_speaker_index.npy"
+            index_path = self.precomputed_dir / f"single_speaker_index_{self.sampling_frequency}Hz.npy"
             if not index_path.exists():
                 log.info("Building single-speaker index for data augmentation...")
                 single_speaker_chunks = []
@@ -322,7 +365,7 @@ class AMIDataModule(BaseDataModule):
                 
                 for meeting_id in tqdm(all_meetings, desc="Building single-speaker index"):
                     for array_id in self.arrays:
-                        sad_path = self.precomputed_dir / f"{meeting_id}_{array_id}_sad.npy"
+                        sad_path = self.precomputed_dir / f"{meeting_id}_{array_id}_{self.sampling_frequency}Hz_sad.npy"
                         if sad_path.exists():
                             sad_mmap = np.load(sad_path, mmap_mode='r')                            
                             length = sad_mmap.shape[-1]
@@ -351,7 +394,7 @@ class AMIDataModule(BaseDataModule):
             split=split,
             chunk_length_s=self.chunk_length_s,
             min_context_s=self.min_context_s,
-            steps_per_epoch=self.steps_per_epoch,
+            train_items_per_epoch=self.train_items_per_epoch,
             augmentation=self.augmentation,
             arrays=self.arrays,
             fs=self.sampling_frequency,

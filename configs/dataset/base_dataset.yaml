@@ -8,7 +8,7 @@ seed: 777
 acc_device: "cpu"
 
 # Even real-world datasets like AMI will be resampled to this target
-sampling_frequency: 8000
+sampling_frequency: ${transform.sampling_frequency}
 
 # Triggers recalculation/recomputation of the precomputed dataset features
 reset: False
