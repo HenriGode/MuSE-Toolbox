@@ -9,7 +9,7 @@ id: "J3_PRAANF_circ_2-8ch_20cm_SIR10dB"
 pra_anf_config:
   microphone_arrays:
     - num_mics: 
-        min: 2
+        min: 3
         max: 8
       geometry: circle
       distribution: regular

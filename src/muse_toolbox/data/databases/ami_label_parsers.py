@@ -8,9 +8,10 @@ log = logging.getLogger(__name__)
 class BaseAMILabelParser:
     """Base class for AMI label parsers using the Strategy Pattern."""
     
-    def __init__(self, data_dir: str, sampling_frequency: int):
+    def __init__(self, data_dir: str, sampling_frequency: int, annotations_dir_name: str = "Annotations_1.6.2_manual"):
         self.data_dir = Path(data_dir)
         self.fs = sampling_frequency
+        self.annotations_dir_name = annotations_dir_name
 
     def get_sad_samples(self, meeting_id: str, total_samples: int) -> dict[str, torch.Tensor]:
         """
@@ -26,34 +27,39 @@ class BaseAMILabelParser:
         """
         raise NotImplementedError("Subclasses must implement get_sad_samples")
 
-
-class AMISegmentsXMLParser(BaseAMILabelParser):
-    """Parses the official segments.xml files for speaker activity."""
-    
-    def get_sad_samples(self, meeting_id: str, total_samples: int) -> dict[str, torch.Tensor]:
-        # Path to segments directory
-        segments_dir = self.data_dir / "Annotations" / "segments"
+    def _parse_xml_annotations(
+        self,
+        meeting_id: str,
+        total_samples: int,
+        sub_dir: str,
+        file_suffix: str,
+        target_tag: str,
+        start_attr: str,
+        end_attr: str
+    ) -> dict[str, torch.Tensor]:
+        """
+        A shared helper method to parse AMI's standard XML annotation format.
+        """
+        xml_dir = self.data_dir / self.annotations_dir_name / sub_dir
         
         sad_samples = {}
-        
         # In AMI, speakers are typically A, B, C, D (sometimes E)
         for speaker_id in ["A", "B", "C", "D", "E"]:
-            xml_file = segments_dir / f"{meeting_id}.{speaker_id}.segments.xml"
+            xml_file = xml_dir / f"{meeting_id}.{speaker_id}.{file_suffix}"
             if not xml_file.exists():
                 continue
                 
             # Create a zeroed boolean tensor for this speaker
             speaker_activity = torch.zeros(total_samples, dtype=torch.bool)
-            
             tree = ET.parse(xml_file)
             root = tree.getroot()
             
-            # We can search for any element ending in 'segment' to ignore namespaces
-            for segment in root.findall('.//*'):
-                if segment.tag.endswith('segment') or segment.tag == 'segment':
-                    if 'transcriber_start' in segment.attrib and 'transcriber_end' in segment.attrib:
-                        start_s = float(segment.attrib['transcriber_start'])
-                        end_s = float(segment.attrib['transcriber_end'])
+            # We can search for any element ending in target_tag to ignore namespaces
+            for element in root.findall('.//*'):
+                if element.tag.endswith(target_tag) or element.tag == target_tag:
+                    if start_attr in element.attrib and end_attr in element.attrib:
+                        start_s = float(element.attrib[start_attr])
+                        end_s = float(element.attrib[end_attr])
                         
                         # Convert seconds to sample indices
                         start_idx = int(start_s * self.fs)
@@ -69,45 +75,36 @@ class AMISegmentsXMLParser(BaseAMILabelParser):
             sad_samples[speaker_id] = speaker_activity
             
         if not sad_samples:
-            log.warning(f"No segment annotations found for meeting {meeting_id}")
+            log.warning(f"No {target_tag} annotations found for meeting {meeting_id}")
             
         return sad_samples
+
+
+class AMISegmentsXMLParser(BaseAMILabelParser):
+    """Parses the official segments.xml files for speaker activity."""
+    
+    def get_sad_samples(self, meeting_id: str, total_samples: int) -> dict[str, torch.Tensor]:
+        return self._parse_xml_annotations(
+            meeting_id=meeting_id,
+            total_samples=total_samples,
+            sub_dir="segments",
+            file_suffix="segments.xml",
+            target_tag="segment",
+            start_attr="transcriber_start",
+            end_attr="transcriber_end"
+        )
+
 
 class AMIWordsXMLParser(BaseAMILabelParser):
     """Parses the official words.xml files for high-precision word-level speech activity."""
     
     def get_sad_samples(self, meeting_id: str, total_samples: int) -> dict[str, torch.Tensor]:
-        words_dir = self.data_dir / "Annotations" / "words"
-        
-        sad_samples = {}
-        for speaker_id in ["A", "B", "C", "D", "E"]:
-            xml_file = words_dir / f"{meeting_id}.{speaker_id}.words.xml"
-            if not xml_file.exists():
-                continue
-                
-            speaker_activity = torch.zeros(total_samples, dtype=torch.bool)
-            tree = ET.parse(xml_file)
-            root = tree.getroot()
-            
-            # We only consider <w> tags (words) as speech
-            for word in root.findall('.//*'):
-                if word.tag.endswith('w') or word.tag == 'w':
-                    if 'starttime' in word.attrib and 'endtime' in word.attrib:
-                        start_s = float(word.attrib['starttime'])
-                        end_s = float(word.attrib['endtime'])
-                        
-                        start_idx = int(start_s * self.fs)
-                        end_idx = int(end_s * self.fs)
-                        
-                        start_idx = max(0, min(start_idx, total_samples - 1))
-                        end_idx = max(0, min(end_idx, total_samples))
-                        
-                        if start_idx < end_idx:
-                            speaker_activity[start_idx:end_idx] = True
-            
-            sad_samples[speaker_id] = speaker_activity
-            
-        if not sad_samples:
-            log.warning(f"No word annotations found for meeting {meeting_id}")
-            
-        return sad_samples
+        return self._parse_xml_annotations(
+            meeting_id=meeting_id,
+            total_samples=total_samples,
+            sub_dir="words",
+            file_suffix="words.xml",
+            target_tag="w",
+            start_attr="starttime",
+            end_attr="endtime"
+        )
