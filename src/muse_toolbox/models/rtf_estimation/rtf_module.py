@@ -6,8 +6,7 @@ import torch
 
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.rtf_estimation.estimators import BaseRTFestimator, Oracle
-from muse_toolbox.data.components import HeterogeneousBatch
-from muse_toolbox.data.simulation.scenario_generation import Segment, identify_segments
+from muse_toolbox.data.components.dynamic_chunk_dataset import DynamicChunkDataset
 from muse_toolbox.utils import (
     Beamformer,
     STFTtransform,
@@ -130,7 +129,7 @@ class RTFmodule(BaseLitModel):
         self.save_hyperparameters(ignore=["source_activity_method", "rtf_estimator"])
 
     def get_resampled_source_count(
-        self, batch: HeterogeneousBatch
+        self, batch: dict
     ) -> list[torch.Tensor]:
         """
         Resample source count sequence from one STFT hop size to another, using nearest neighbor interpolation.
@@ -142,35 +141,36 @@ class RTFmodule(BaseLitModel):
             source_count_out: [T_out] Tensor of source counts at output hop size
         """
         source_count = []
-        for i in range(batch.batch_size):
+        batch_size = len(batch["input"])
+        for i in range(batch_size):
             if (
-                batch.meta["scenario_params"][i]["transform"].signature
+                batch["meta"]["scenario_params"][i]["transform"].signature
                 != self.transform.signature
             ):
                 source_count.append(
                     self.transform.samples2frames_quantity(
-                            batch.meta["scenario_params"][i][
+                            batch["meta"]["scenario_params"][i][
                                 "transform"
                             ].frames2samples_quantity(
-                                batch.meta["source_count"][i].float()
+                                batch["meta"]["source_count"][i].float()
                             )
                     ).int()
                 )
             else:
-                source_count.append(batch.meta["source_count"][i])
+                source_count.append(batch["meta"]["source_count"][i])
 
         return source_count
 
-    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
+    def forward(self, batch: dict) -> dict:
         """
         Executes the RTF estimation pipeline for a batch of scenarios.
 
         Args:
-            batch (HeterogeneousBatch): A heterogeneous batch containing the STFT audio 
+            batch (dict): A heterogeneous batch containing the STFT audio 
                 signals and meta-information.
 
         Returns:
-            HeterogeneousBatch: The same batch, but populated with the `estimates` 
+            dict: The same batch, but populated with the `estimates` 
                 attribute containing the inferred RTFs, IDs, and beamformed targets.
         """
         # 1. Get Source Activity (Oracle or Estimated)
@@ -185,25 +185,26 @@ class RTFmodule(BaseLitModel):
 
         # 2. Level 1 Loop
         # Iterate over each scenario in the batch
-        for b_idx in range(batch.batch_size):
+        batch_size = len(batch["input"])
+        for b_idx in range(batch_size):
             # Extract single scenario data (handling padding if necessary)
             # You might need lengths from batch.meta['seq_len'] to slice correctly
 
             scenario_kwargs = {}
             # Pass oracle metadata if available
             if isinstance(self.processor.rtf_estimator, Oracle):
-                scenario_kwargs["sad_frames"] = batch.meta["sad_frames"][b_idx]
-                scenario_kwargs["oracle_rtfs"] = batch.meta["rtfs"][b_idx]
+                scenario_kwargs["sad_frames"] = batch["meta"]["sad_frames"][b_idx]
+                scenario_kwargs["oracle_rtfs"] = batch["meta"]["rtfs"][b_idx]
 
             # Delegate to Level 2
             scenario_result = self.processor.process_scenario(
-                stft=batch.stft_audio[b_idx],  # [F, M, T]
+                stft=batch["input"][b_idx],  # [F, M, T]
                 source_activity=source_activity[b_idx],  # [T]
                 **scenario_kwargs,
             )
             results.append(scenario_result)
 
-        batch.estimates = results  # List of list of tensors
+        batch["estimates"] = results  # List of list of tensors
 
         return batch
 
@@ -220,26 +221,26 @@ class RTFmodule(BaseLitModel):
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def _metric_step(
-        self, processed_batch: HeterogeneousBatch, dataloader_idx: int, step_type: str
+        self, processed_batch: dict, dataloader_idx: int, step_type: str
     ):
         """
         Updates the metric collections based on the estimates from the forward pass.
 
         Args:
-            processed_batch (HeterogeneousBatch): The batch containing ground truth and estimates.
+            processed_batch (dict): The batch containing ground truth and estimates.
             dataloader_idx (int): The index of the dataloader.
             step_type (str): The step type (e.g., 'val', 'test').
         """
-        meta_dict = processed_batch.meta.copy()
+        meta_dict = processed_batch["meta"].copy()
         meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
         targets = (meta_dict["rtfs"], meta_dict["references"])
         self.metric_collections[step_type].update(
-            processed_batch.estimates, targets, meta_dict, dataloader_idx
+            processed_batch["estimates"], targets, meta_dict, dataloader_idx
         )
 
     def predict_step(
         self, batch: dict, batch_idx: int, dataloader_idx: int = 0
-    ) -> HeterogeneousBatch:
+    ) -> dict:
         """
         Executes a single prediction step.
 
@@ -249,7 +250,7 @@ class RTFmodule(BaseLitModel):
             dataloader_idx (int): The index of the dataloader.
 
         Returns:
-            HeterogeneousBatch: The processed batch with estimates.
+            dict: The processed batch with estimates.
         """
         return self(batch)
 

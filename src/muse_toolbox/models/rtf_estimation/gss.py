@@ -4,7 +4,7 @@ import torch
 from torchaudio.transforms import SoudenMVDR
 
 from muse_toolbox.models.base_model import BaseLitModel
-from muse_toolbox.data.components import HeterogeneousBatch
+from muse_toolbox.data.components.dynamic_chunk_dataset import DynamicChunkDataset
 from muse_toolbox.utils import (
     STFTtransform,
     activity_dict2tensor,
@@ -97,34 +97,35 @@ class BlockOnlineGSS(BaseLitModel):
             latency_constraint=latency_constraint,
         )
 
-    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
+    def forward(self, batch: dict) -> dict:
         """
         Executes the forward pass for a batch of heterogeneous scenarios.
 
         Args:
-            batch (HeterogeneousBatch): The input batch containing STFT audio and metadata.
+            batch (dict): The input batch containing STFT audio and metadata.
 
         Returns:
-            HeterogeneousBatch: The same batch, populated with the `estimates` attribute.
+            dict: The same batch, populated with the `estimates` attribute.
         """
 
         results = []
 
         # 2. Level 1 Loop
         # Iterate over each scenario in the batch
-        for b_idx in range(batch.batch_size):
+        batch_size = len(batch["input"])
+        for b_idx in range(batch_size):
             # Extract single scenario data (handling padding if necessary)
             # You might need lengths from batch.meta['seq_len'] to slice correctly
 
             # Delegate to Level 2
             scenario_result = self._forward_scenario(
-                stft=batch.stft_audio[b_idx],
-                source_activity=batch.meta["sad_frames"][b_idx],
-                source_id_map=batch.meta["id_map"][b_idx],
+                stft=batch["input"][b_idx],
+                source_activity=batch["meta"]["sad_frames"][b_idx],
+                source_id_map=batch["meta"]["id_map"][b_idx],
             )
             results.append(scenario_result)
 
-        batch.estimates = results  # List of list of tensors
+        batch["estimates"] = results  # List of list of tensors
 
         return batch
 
@@ -141,21 +142,21 @@ class BlockOnlineGSS(BaseLitModel):
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def _metric_step(
-        self, processed_batch: HeterogeneousBatch, dataloader_idx: int, step_type: str
+        self, processed_batch: dict, dataloader_idx: int, step_type: str
     ) -> None:
         """
         Updates the metric collections based on the estimates from the forward pass.
 
         Args:
-            processed_batch (HeterogeneousBatch): The processed batch containing estimates and metadata.
+            processed_batch (dict): The processed batch containing estimates and metadata.
             dataloader_idx (int): The index of the dataloader.
             step_type (str): The step type (e.g., 'val', 'test').
         """
-        meta_dict = processed_batch.meta.copy()
+        meta_dict = processed_batch["meta"].copy()
         meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
         targets = (meta_dict["rtfs"], meta_dict["references"])
         self.metric_collections[step_type].update(
-            processed_batch.estimates, targets, meta_dict, dataloader_idx
+            processed_batch["estimates"], targets, meta_dict, dataloader_idx
         )
 
     def _forward_scenario(

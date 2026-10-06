@@ -6,7 +6,7 @@ from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
 from muse_toolbox.models.components.channel_combinator.base_channel_combinator import BaseChannelCombinator
-from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
+
 from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)
@@ -155,39 +155,7 @@ class COSADmodule(BaseLitModel):
                 f"{indent}  Source Count Estimator: {self.source_count_estimator.__class__.__name__}"
             )
 
-    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
-        """
-        Executes the forward pass of the COSAD pipeline.
-
-        Applies the feature extractor followed by the source count estimator 
-        to the provided batch data.
-
-        Args:
-            batch (HeterogeneousBatch): A batch object containing the STFT input 
-                data and relevant metadata.
-
-        Returns:
-            HeterogeneousBatch: The processed batch, now populated with source 
-                activity estimates.
-        """
-
-        # 0. Data Augmentation
-        if self.training and self.permute_channels:
-            batch.randomly_permute_channels()
-
-        # 1. Feature Extraction
-        batch.apply_feature_extractor(self.feature_extractor)
-        
-        # 2. Channel Combination (Optional)
-        if self.channel_combinator is not None:
-            batch.apply_channel_combinator(self.channel_combinator)
-
-        # 3. Detection (Source Count Estimation)
-        # The estimator takes the features and estimates source activity.
-        batch.apply_source_count_estimator(self.source_count_estimator)
-        return batch
-
-    def forward_dict(self, batch: dict) -> dict:
+    def forward(self, batch: dict) -> dict:
         """
         Executes the forward pass of the COSAD pipeline using raw dictionary batches.
         """
@@ -195,7 +163,7 @@ class COSADmodule(BaseLitModel):
         valid_mics = batch.get("mic_lengths", None)
         
         # 0. Data Augmentation
-        if self.permute_channels:
+        if self.permute_channels and self.training:
             B, M, T = x.shape
             for i in range(B):
                 m_len = valid_mics[i].item() if valid_mics is not None else M
@@ -225,8 +193,8 @@ class COSADmodule(BaseLitModel):
         }
 
     def predict_step(
-        self, batch: dict | HeterogeneousBatch, batch_idx: int, dataloader_idx: int = 0
-    ) -> dict | HeterogeneousBatch:
+        self, batch: dict, batch_idx: int, dataloader_idx: int = 0
+    ) -> dict:
         """
         Executes a prediction step.
 
@@ -242,12 +210,7 @@ class COSADmodule(BaseLitModel):
             processed_batch: The processed batch, ready for evaluation.
         """
         predictions = self(batch)
-        if isinstance(predictions, dict):
-            est = predictions["estimates"]
-            if est is not None:
-                predictions["estimates"] = torch.argmax(est, dim=-1, keepdim=True)
-        else:
-            est = predictions.estimates
-            if est is not None:
-                predictions.estimates = torch.argmax(est, dim=-1, keepdim=True)
+        est = predictions["estimates"]
+        if est is not None:
+            predictions["estimates"] = torch.argmax(est, dim=-1, keepdim=True)
         return predictions

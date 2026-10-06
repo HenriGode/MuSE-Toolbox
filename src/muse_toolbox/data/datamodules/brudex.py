@@ -9,7 +9,6 @@ import logging
 from muse_toolbox.data.datamodules.base_datamodule import BaseDataModule
 from muse_toolbox.data.databases.base_DBs import BaseSourceDB, BaseRIRsDB, BaseNoiseDB
 from muse_toolbox.data.simulation.base_scenario_generator import BaseScenarioGenerator, ScenarioGenerationConfig
-from muse_toolbox.models.components.feature_extractors.base_feature import BaseFeatureExtractor
 import muse_toolbox.data.databases as all_dbs
 
 log = logging.getLogger(__name__)
@@ -235,9 +234,11 @@ class BrudexDataModule(BaseDataModule):
         clean_speech_databases: dict[str, dict[str, Any]],
         seed: int | None,
         reset: bool,
-        feature_extractor: BaseFeatureExtractor | None,
         acc_device: torch.device,
-        force_load_stft: bool,
+        chunk_length_s: float,
+        min_context_s: float,
+        train_items_per_epoch: int,
+        augmentation: dict,
     ):
         """
         Initializes the BrudexDataModule.
@@ -255,8 +256,10 @@ class BrudexDataModule(BaseDataModule):
             seed (int | None): Random seed for reproducibility.
             reset (bool): Whether to force a reset of cached data.
             acc_device (torch.device): Device used for accelerated generation.
-            feature_extractor (BaseFeatureExtractor | None): Optional pre-configured feature extractor.
-            force_load_stft (bool): Whether to force STFT loading instead of waveform.
+            chunk_length_s (float): Length of the chunks to load in seconds.
+            min_context_s (float): Overlap context in seconds.
+            train_items_per_epoch (int): Number of training items per epoch.
+            augmentation (dict): Augmentation configuration dictionary.
         """
         # --- Step 1: Call parent constructor and perform simple assignments ---
         super().__init__(
@@ -271,8 +274,10 @@ class BrudexDataModule(BaseDataModule):
             seed=seed,
             reset=reset,
             acc_device=acc_device,
-            feature_extractor=feature_extractor,
-            force_load_stft=force_load_stft,
+            chunk_length_s=chunk_length_s,
+            min_context_s=min_context_s,
+            train_items_per_epoch=train_items_per_epoch,
+            augmentation=augmentation,
         )
         self.brudex_config = brudex_config
         self.clean_speech_databases_configs = clean_speech_databases

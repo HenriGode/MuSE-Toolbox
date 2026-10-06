@@ -11,7 +11,7 @@ import torch
 from muse_toolbox.utils import STFTtransform
 from torchmetrics import MetricCollection
 
-from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
+
 
 log = logging.getLogger(__name__)
 
@@ -112,35 +112,9 @@ class BaseLitModel(pl.LightningModule):
         }
 
     @abstractmethod
-    def forward_(self, batch: HeterogeneousBatch) -> HeterogeneousBatch:
-        """
-        Abstract method to define the forward pass of the model.
-
-        Must be implemented in subclasses to define the core computation.
-
-        Args:
-            batch (HeterogeneousBatch): The input batch data.
-
-        Returns:
-            HeterogeneousBatch: The processed batch.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def forward_dict(self, batch: dict) -> dict:
-        """
-        Abstract method to define the forward pass for dict-based batches.
-        """
-        raise NotImplementedError
-
-    def forward(self, batch: dict | HeterogeneousBatch) -> dict | HeterogeneousBatch:
+    def forward(self, batch: dict) -> dict:
         """Perform a forward pass through the model."""
-        if isinstance(batch, HeterogeneousBatch):
-            return self.forward_(batch)
-        elif isinstance(batch, dict):
-            return self.forward_dict(batch)
-        else:
-            raise NotImplementedError(f"Unsupported batch type: {type(batch)}")
+        raise NotImplementedError
 
     def count_parameters(self) -> int:
         """
@@ -207,33 +181,17 @@ class BaseLitModel(pl.LightningModule):
         lr_scheduler_dict = {"scheduler": scheduler, **lightning_config}
         return cast(OptimizerLRScheduler, {"optimizer": optimizer, "lr_scheduler": lr_scheduler_dict})
 
-    def transfer_batch_to_device(
-        self, batch: Any, device: torch.device, dataloader_idx: int
-    ) -> Any:
-        """
-        Overrides PyTorch Lightning's default batch transfer logic to seamlessly handle 
-        custom `HeterogeneousBatch` objects.
 
-        Args:
-            batch (Any): The input batch, typically a HeterogeneousBatch.
-            device (torch.device): The target device (e.g., 'cuda:0', 'cpu').
-            dataloader_idx (int): The index of the dataloader providing the batch.
-
-        Returns:
-            Any: The batch moved to the target device.
-        """
-        if isinstance(batch, HeterogeneousBatch):
-            return batch.to(device)
-        return super().transfer_batch_to_device(batch, device, dataloader_idx)
 
     def _flatten_and_mask(self, preds: torch.Tensor, targets: list[torch.Tensor], time_lengths: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Flattens predictions and targets, filtering out the padded elements based on time_lengths.
         """
-        if not hasattr(self, "transform") or getattr(self, "transform") is None:
+        transform = getattr(self, "transform", None)
+        if transform is None:
             raise ValueError("STFTtransform is required to calculate valid frames for loss masking.")
             
-        valid_frames = self.transform.samples2frames(time_lengths)
+        valid_frames = transform.samples2frames(time_lengths)
         B, max_frames = preds.shape[0], preds.shape[1]
         
         padded_targets = torch.zeros((B, max_frames), device=preds.device, dtype=torch.long)
@@ -249,29 +207,26 @@ class BaseLitModel(pl.LightningModule):
         
         return valid_preds.unsqueeze(0), valid_targets.unsqueeze(0)
 
-    def _common_step(self, batch: dict | HeterogeneousBatch, idx: int, step_type: str) -> tuple[dict, dict | HeterogeneousBatch]:
+    def _common_step(self, batch: dict, idx: int, step_type: str) -> tuple[dict, dict]:
         """
         Executes a common forward pass, computes the loss, and logs the results.
 
         Args:
-            batch: The input batch (dict or HeterogeneousBatch).
+            batch: The input batch (dict).
             idx (int): The batch index.
             step_type (str): The step type (e.g., 'train', 'val', 'test') used as a prefix for logging.
 
         Returns:
-            tuple[dict, dict | HeterogeneousBatch]: A tuple containing the loss dictionary and the processed batch.
+            tuple[dict, dict]: A tuple containing the loss dictionary and the processed batch.
         """
         processed_batch = self(batch)
         
-        if isinstance(processed_batch, dict):
-            preds = processed_batch["estimates"]
-            targets = processed_batch["meta"]["source_count"]
-            time_lengths = processed_batch["time_lengths"]
-            
-            valid_preds, valid_targets = self._flatten_and_mask(preds, targets, time_lengths)
-            loss_dict = {"loss": self.criterion.compute_loss(valid_preds, valid_targets)}
-        else:
-            loss_dict = processed_batch.compute_loss(self.criterion)
+        preds = processed_batch["estimates"]
+        targets = processed_batch["meta"]["source_count"]
+        time_lengths = processed_batch["time_lengths"]
+        
+        valid_preds, valid_targets = self._flatten_and_mask(preds, targets, time_lengths)
+        loss_dict = {"loss": self.criterion.compute_loss(valid_preds, valid_targets)}
             
         self.log_dict(
             {f"{step_type}/{x}": y for x, y in loss_dict.items()},
@@ -286,7 +241,7 @@ class BaseLitModel(pl.LightningModule):
         return loss_dict, processed_batch
 
     def _metric_step(
-        self, processed_batch: dict | HeterogeneousBatch, dataloader_idx: int, step_type: str
+        self, processed_batch: dict, dataloader_idx: int, step_type: str
     ) -> None:
         """
         Updates the metric collections based on the estimates from the forward pass.
@@ -296,33 +251,28 @@ class BaseLitModel(pl.LightningModule):
             dataloader_idx (int): The index of the dataloader.
             step_type (str): The step type ('val', 'test').
         """
-        if isinstance(processed_batch, dict):
-            meta_dict = processed_batch["meta"].copy()
-            estimates = processed_batch["estimates"]
-            time_lengths = processed_batch["time_lengths"]
-            targets = meta_dict["source_count"]
+        meta_dict = processed_batch["meta"].copy()
+        estimates = processed_batch["estimates"]
+        time_lengths = processed_batch["time_lengths"]
+        targets = meta_dict["source_count"]
+        
+        # Slice the estimates and targets to their valid lengths to form lists
+        valid_estimates = []
+        valid_targets = []
+        for i in range(len(time_lengths)):
+            valid_len = time_lengths[i]
+            valid_estimates.append(estimates[i, :valid_len])
+            valid_targets.append(targets[i][:valid_len].to(estimates.device))
             
-            # Slice the estimates and targets to their valid lengths to form lists
-            valid_estimates = []
-            valid_targets = []
-            for i in range(len(time_lengths)):
-                valid_len = time_lengths[i]
-                valid_estimates.append(estimates[i, :valid_len])
-                valid_targets.append(targets[i][:valid_len].to(estimates.device))
-                
-            estimates = valid_estimates
-            targets = valid_targets
-        else:
-            meta_dict = processed_batch.meta.copy()
-            estimates = processed_batch.estimates
-            targets = meta_dict["source_count"]
+        estimates = valid_estimates
+        targets = valid_targets
             
         meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
         self.metric_collections[step_type].update(
             estimates, targets, meta_dict, dataloader_idx
         )
 
-    def training_step(self, batch: dict | HeterogeneousBatch, idx: int) -> torch.Tensor:
+    def training_step(self, batch: dict, idx: int) -> torch.Tensor:
         """
         Defines the training step.
 
@@ -335,7 +285,7 @@ class BaseLitModel(pl.LightningModule):
         """
         return self._common_step(batch, idx, "train")[0]["loss"]
 
-    def validation_step(self, batch: dict | HeterogeneousBatch, idx: int, dataloader_idx: int = 0) -> None:
+    def validation_step(self, batch: dict, idx: int, dataloader_idx: int = 0) -> None:
         """
         Defines the validation step.
 
@@ -347,7 +297,7 @@ class BaseLitModel(pl.LightningModule):
         _, processed_batch = self._common_step(batch, idx, "val")
         self._metric_step(processed_batch, dataloader_idx, "val")
 
-    def test_step(self, batch: dict | HeterogeneousBatch, idx: int, dataloader_idx: int = 0) -> None:
+    def test_step(self, batch: dict, idx: int, dataloader_idx: int = 0) -> None:
         """
         Defines the test step.
 
@@ -360,8 +310,8 @@ class BaseLitModel(pl.LightningModule):
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def predict_step(
-        self, batch: dict | HeterogeneousBatch, batch_idx: int, dataloader_idx: int = 0
-    ) -> dict | HeterogeneousBatch:
+        self, batch: dict, batch_idx: int, dataloader_idx: int = 0
+    ) -> dict:
         """
         Defines the prediction step.
 

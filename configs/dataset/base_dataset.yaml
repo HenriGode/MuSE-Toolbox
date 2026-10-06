@@ -16,8 +16,11 @@ reset: False
 # Global STFT transform injected from the main config space
 transform: ${transform}
 
-# Dynamically inject the feature extractor from the model
-feature_extractor: ${oc.select:model.feature_extractor,null}
+# Chunking and Inference Parameters
+chunk_length_s: 7.0
+min_context_s: 2.0
+train_items_per_epoch: 5000
 
-# Force the load of stft when True (instead of precomputed features)
-force_load_stft: False
+# Data Augmentation Config (disabled by default, specific logic in AMI)
+augmentation:
+  enabled: false

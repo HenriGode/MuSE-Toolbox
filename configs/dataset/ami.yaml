@@ -19,11 +19,7 @@ database:
   sampling_frequency: ${dataset.sampling_frequency}
   label_parser: ${dataset.label_parser}
 
-# Chunking and Inference Parameters
-chunk_length_s: 7.0
-min_context_s: 2.0
-train_items_per_epoch: 5000
-
+# Chunking parameters inherited from base_dataset.yaml
 # Single Speaker Data Augmentation Config
 augmentation:
   enabled: true

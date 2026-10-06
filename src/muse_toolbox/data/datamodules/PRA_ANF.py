@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TypedDict, Unpack, Any
 import logging
 
-from muse_toolbox.models.components.feature_extractors.base_feature import BaseFeatureExtractor
 from muse_toolbox.data.datamodules.base_datamodule import BaseDataModule
 from muse_toolbox.data.databases.base_DBs import BaseDB, BaseRIRsDB, BaseNoiseDB, BaseSourceDB
 from muse_toolbox.data.simulation.base_scenario_generator import BaseScenarioGenerator, ScenarioGenerationConfig
@@ -449,11 +448,13 @@ class PraAnfDataModule(BaseDataModule):
         pra_anf_config: PraAnfConfig,
         clean_speech_databases: dict[str, dict[str, Any]],
         noise_databases: dict[str, dict[str, Any]],
-        feature_extractor: BaseFeatureExtractor | None,
         seed: int | None,
         reset: bool,
         acc_device: torch.device,
-        force_load_stft: bool,
+        chunk_length_s: float,
+        min_context_s: float,
+        train_items_per_epoch: int,
+        augmentation: dict,
     ):
         """
         Initializes the PRA/ANF DataModule.
@@ -470,10 +471,13 @@ class PraAnfDataModule(BaseDataModule):
             pra_anf_config (PraAnfConfig): Config specific to PRA/ANF.
             clean_speech_databases (dict): Configurations for clean speech databases.
             noise_databases (dict): Configurations for noise databases.
-            feature_extractor (BaseFeatureExtractor | None): Pre-configured feature extractor.
             seed (int | None): Random seed.
             reset (bool): Whether to force a reset of cached data.
             acc_device (torch.device): Device used for accelerated generation.
+            chunk_length_s (float): Length of the chunks to load in seconds.
+            min_context_s (float): Overlap context in seconds.
+            train_items_per_epoch (int): Number of training items per epoch.
+            augmentation (dict): Augmentation configuration dictionary.
         """
         super().__init__(
             data_dir=data_dir,
@@ -486,9 +490,11 @@ class PraAnfDataModule(BaseDataModule):
             generation_config=generation_config,
             seed=seed,
             reset=reset,
-            feature_extractor=feature_extractor,
             acc_device=acc_device,
-            force_load_stft=force_load_stft,
+            chunk_length_s=chunk_length_s,
+            min_context_s=min_context_s,
+            train_items_per_epoch=train_items_per_epoch,
+            augmentation=augmentation,
         )
         self.pra_anf_config = pra_anf_config
         self.clean_speech_databases_configs = clean_speech_databases

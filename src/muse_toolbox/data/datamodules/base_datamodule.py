@@ -1,15 +1,15 @@
 """Base DataModule for MuSE-Toolbox.
 
 Provides the generic abstraction for all scenario-based data generation,
-feature pre-computation, and PyTorch Lightning DataLoaders.
+saving raw audio/SAD to memory-mappable .npy files, and PyTorch Lightning DataLoaders.
 """
 
 import logging
 import shutil
-import functools
 from abc import ABC, abstractmethod
 from collections.abc import Sized
 from pathlib import Path
+import numpy as np
 
 import lightning as pl
 import torch
@@ -17,11 +17,9 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from muse_toolbox.data.simulation.base_scenario_generator import ScenarioGenerationConfig
-from muse_toolbox.data.components.precomputed_dataset import PrecomputedDataset
-from muse_toolbox.models.components.feature_extractors.base_feature import (
-    BaseFeatureExtractor,
-)
-from muse_toolbox.utils import STFTtransform, move2device
+from muse_toolbox.utils import STFTtransform
+from muse_toolbox.data.components.collate import raw_audio_collate_fn
+from muse_toolbox.data.components.dynamic_chunk_dataset import DynamicChunkDataset
 
 log = logging.getLogger(__name__)
 
@@ -42,14 +40,17 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         transform: STFTtransform,
         batch_size: int,
         num_workers: int,
-        num_scenarios: list[int],
+        num_scenarios: list[int] | None,
         sampling_frequency: int,
         generation_config: ScenarioGenerationConfig,
         seed: int | None,
         reset: bool,
         acc_device: torch.device,
-        feature_extractor: BaseFeatureExtractor | None,
-        force_load_stft: bool,
+        chunk_length_s: float,
+        min_context_s: float,
+        train_items_per_epoch: int,
+        augmentation: dict,
+        **kwargs
     ) -> None:
         """Initializes the BaseDataModule.
 
@@ -65,8 +66,10 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             seed (Optional[int]): Random seed for reproducibility.
             reset (bool): If True, forces deletion of previously generated data for this ID.
             acc_device (torch.device): Device to use for precomputation acceleration.
-            feature_extractor (Optional[BaseFeatureExtractor]): Optional feature extractor.
-            force_load_stft (bool): If True, forces loading of STFT data even if features are precomputed.
+            chunk_length_s (float): Length of the chunks to load in seconds.
+            min_context_s (float): Overlap context in seconds.
+            train_items_per_epoch (int): Number of training items per epoch.
+            augmentation (dict): Augmentation configuration dictionary.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -79,12 +82,12 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.generation_config = generation_config
         self.seed = seed
         self.reset = reset
-        self.feature_extractor = feature_extractor
-        if isinstance(self.feature_extractor, functools.partial):
-            self.feature_extractor = self.feature_extractor(transform=self.transform)
-            
-        self.force_load_stft = force_load_stft
         self.acc_device = acc_device
+        self.chunk_length_s = chunk_length_s
+        self.min_context_s = min_context_s
+        self.train_items_per_epoch = train_items_per_epoch
+        self.augmentation = augmentation
+        
         self.data_is_prepared = False
         self.precomputed_dir = self.data_dir / "datasets" / self.id
 
@@ -125,7 +128,6 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             self.data_is_prepared = True
 
     # --- Helper Functions for the Pipeline ---
-
     def _handle_reset(self) -> None:
         """Checks and executes the reset logic.
         
@@ -172,59 +174,13 @@ class BaseDataModule(pl.LightningDataModule, ABC):
                 db_manager.prepare_data()
 
     def _generate_scenarios(self) -> None:
-        """Generates and saves scenario files and pre-computes features."""
+        """Generates and saves scenario files as memory-mappable .npy files."""
         log.info("--- Starting scenario pre-computation ---")
 
         # 1. Setup Base Paths
         database_path = self.precomputed_dir
         database_path.mkdir(parents=True, exist_ok=True)
         log.info(f"Scenarios will be saved to: {database_path}")
-
-        # 2. Analyze Feature Extractor Capabilities
-        feat_extr = self.feature_extractor
-        feature_base_dir = None
-        stft_base_dir = None
-
-        # Capture original training state to restore later
-        feat_extr_was_training = True
-
-        if isinstance(feat_extr, BaseFeatureExtractor):
-            feat_extr_was_training = feat_extr.training
-            feat_extr.eval()
-            
-            # Determine device for precomputation once
-            trainer = getattr(self, "trainer", None)
-            try:
-                if trainer is not None and getattr(trainer, "device_ids", None):
-                    self._precompute_dev = torch.device(f"cuda:{trainer.device_ids[0]}")
-                elif torch.cuda.is_available():
-                    # self._precompute_dev = torch.device("cuda:0")
-                    log.warning("CUDA is avaiable but on a different device. Now processing on CPU.")
-                    self._precompute_dev = torch.device("cpu")
-                else:
-                    self._precompute_dev = torch.device("cpu")
-            except Exception:
-                self._precompute_dev = torch.device("cpu")
-            
-            # Move feature extractor to the device
-            feat_extr = feat_extr.to(self._precompute_dev)
-
-
-            # Condition A: Precompute Features
-            if feat_extr.precompute_type == "features":
-                feature_base_dir = database_path / "features" / feat_extr.signature
-                feature_base_dir.mkdir(parents=True, exist_ok=True)
-
-                with open(feature_base_dir / "signature.txt", "w") as f:
-                    f.write(feat_extr.full_signature)
-                log.info(f"Pre-computing features for: {feat_extr.full_signature}")
-
-            # Condition B: Precompute STFT
-            if getattr(feat_extr, "uses_stft", False) and isinstance(feat_extr.transform, STFTtransform):
-                stft_signature = feat_extr.transform.signature
-                stft_base_dir = database_path / "stft" / stft_signature
-                stft_base_dir.mkdir(parents=True, exist_ok=True)
-                log.info(f"Pre-computing STFTs for: {stft_signature}")
 
         # Set random global seed for reproducibility
         if self.seed is not None:
@@ -237,136 +193,62 @@ class BaseDataModule(pl.LightningDataModule, ABC):
                 log.info(f"No scenarios to generate for '{split}' split. Skipping.")
                 continue
 
-            # Prepare directories
-            dirs = {"raw": database_path / split}
-            dirs["raw"].mkdir(parents=True, exist_ok=True)
-
-            if feature_base_dir:
-                dirs["feats"] = feature_base_dir / split
-                dirs["feats"].mkdir(parents=True, exist_ok=True)
-            if stft_base_dir:
-                dirs["stft"] = stft_base_dir / split
-                dirs["stft"].mkdir(parents=True, exist_ok=True)
+            # Create Split-Specific Directory
+            split_dir = database_path / split
+            split_dir.mkdir(parents=True, exist_ok=True)
 
             with torch.no_grad():
-                for i in tqdm(range(len(generator)), desc=f"Pre-computing {split} scenarios"):
-                    paths = {k: d / f"scenario_{i}.pt" for k, d in dirs.items()}
-                    missing = {k for k, p in paths.items() if not p.exists()}
+                for i in tqdm(range(len(generator)), desc=f"Generating {split} scenarios"):
+                    audio_path = split_dir / f"scenario_{i}_audio.npy"
+                    sad_path = split_dir / f"scenario_{i}_sad.npy"
+                    meta_path = split_dir / f"scenario_{i}_meta.pt"
                     
-                    if not missing:
+                    if audio_path.exists() and sad_path.exists() and meta_path.exists():
                         continue
 
-                    # Load or Generate Raw Audio
-                    if "raw" in missing:
-                        data = generator.__getitem__(i)
-                        input_tensor = data["input"]
-                        meta = data["meta"]
-                        
-                        raw_save_dict = {"meta": meta, "input_type": "raw_audio"}
-                        if "references" not in meta:
-                            raw_save_dict["raw_audio"] = input_tensor
-                            
-                        torch.save(raw_save_dict, paths["raw"])
+                    data = generator.__getitem__(i)
+                    input_tensor = data["input"]
+                    meta = data["meta"]
+                    
+                    sad_dict = meta.get("sad_samples", {})
+                    speaker_ids = [k for k in sad_dict.keys() if k != "noise"]
+                    
+                    if speaker_ids:
+                        sad_tensor = torch.stack([sad_dict[k] for k in speaker_ids], dim=0)
                     else:
-                        loaded = torch.load(paths["raw"], weights_only=False)
-                        meta = loaded["meta"]
-                        if "raw_audio" in loaded:
-                            input_tensor = loaded["raw_audio"]
-                        else:
-                            input_tensor = torch.stack(list(meta["references"].values())).sum(dim=0)
-
-                    # Compute Derived Data
-                    if missing and isinstance(feat_extr, BaseFeatureExtractor):
-                        dev = self._precompute_dev
+                        sad_tensor = torch.zeros(1, input_tensor.shape[1], dtype=torch.bool)
                         
-                        derived = move2device(
-                            feat_extr.precompute(input_tensor.to(dev)),
-                            torch.device("cpu"),
-                        )
+                    meta["speaker_ids"] = speaker_ids
+                    
+                    for key in ["sad_samples", "sad_frames", "source_count"]:
+                        if key in meta:
+                            del meta[key]
 
-                        if "stft" in missing and "stft" in derived and isinstance(feat_extr.transform, STFTtransform):
-                            torch.save(
-                                {
-                                    "stft": derived["stft"],
-                                    "input_type": "stft",
-                                    "stft_info": feat_extr.transform.signature,
-                                },
-                                paths["stft"]
-                            )
-
-                        has_features = "features" in derived
-                        has_stacked = any(k[0].isdigit() and "_features" in k for k in derived.keys())
-
-                        if "feats" in missing and (has_features or has_stacked):
-                            payload = derived["features"] if has_features else {
-                                k: v for k, v in derived.items() if k[0].isdigit() and "_features" in k
-                            }
-                            torch.save(
-                                {
-                                    "features": payload,
-                                    "input_type": "features",
-                                    "feature_info": feat_extr.full_signature,
-                                },
-                                paths["feats"]
-                            )
-
-        # Restore original training state and move back to CPU
-        if isinstance(feat_extr, BaseFeatureExtractor):
-            feat_extr.train(feat_extr_was_training)
-            feat_extr = feat_extr.to("cpu")
+                    np.save(audio_path, input_tensor.numpy())
+                    np.save(sad_path, sad_tensor.numpy())
+                    torch.save(meta, meta_path)
 
     def setup(self, stage: str | None = None) -> None:
-        """Smart setup method that assigns train/val/test datasets.
-        
-        Args:
-            stage (Optional[str]): Lightning stage ('fit', 'test', None).
-        """
-        base_root = self.precomputed_dir
-
-        if not base_root.exists():
-            raise FileNotFoundError(f"Base data directory not found: {base_root}. Run prepare_data first.")
-
-        feature_extractor = self.feature_extractor
-
-        if isinstance(feature_extractor, BaseFeatureExtractor):
-            precompute_type = feature_extractor.precompute_type
-            load_features = (precompute_type == "features") and (not self.force_load_stft)
-            load_stft = (precompute_type == "stft") or self.force_load_stft
-
-            if load_features:
-                log.info("Loading precomputed features.")
-                data_root = base_root / "features" / feature_extractor.signature
-            elif load_stft and isinstance(feature_extractor.transform, STFTtransform):
-                stft_dir = base_root / "stft" / feature_extractor.transform.signature
-                if stft_dir.exists():
-                    log.info("Loading precomputed STFTs.")
-                    data_root = stft_dir
-                else:
-                    log.info("STFT directory not found. Loading raw audio.")
-                    data_root = base_root
-            else:
-                log.info("Unknown precompute_type. Loading raw audio.")
-                data_root = base_root
-        else:
-            log.info("No feature extractor defined. Loading raw audio.")
-            data_root = base_root
-
-        data_roots = [data_root]
+        if not self.precomputed_dir.exists():
+            raise FileNotFoundError(f"Base data directory not found: {self.precomputed_dir}. Run prepare_data first.")
 
         if stage == "fit" or stage is None:
-            self.train_ds = PrecomputedDataset(
-                precomputed_dir=[dr / "train" for dr in data_roots],
-                preload_to_ram=False,
-            )
-            self.val_ds = PrecomputedDataset(
-                precomputed_dir=[dr / "val" for dr in data_roots],
-                preload_to_ram=False,
-            )
+            self.train_ds = self._get_scenario_generator_dataset('train')
+            self.val_ds = self._get_scenario_generator_dataset('val')
         if stage in ["test"] or stage is None:
-            self.test_ds = PrecomputedDataset(
-                precomputed_dir=[dr / "test" for dr in data_roots],
-                preload_to_ram=False,
-            )
+            self.test_ds = self._get_scenario_generator_dataset('test')
+            
+    def _get_scenario_generator_dataset(self, split: str) -> Dataset:
+        return DynamicChunkDataset(
+            data_dir=self.precomputed_dir / split,
+            split=split,
+            chunk_length_s=self.chunk_length_s,
+            min_context_s=self.min_context_s,
+            train_items_per_epoch=self.train_items_per_epoch,
+            augmentation=self.augmentation,
+            fs=self.sampling_frequency,
+            transform=self.transform
+        )
 
     def train_dataloader(self) -> DataLoader:
         """Creates the DataLoader for the training set.
@@ -385,7 +267,7 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True,
-            collate_fn=self.train_ds.collate_fn,
+            collate_fn=raw_audio_collate_fn,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -402,7 +284,7 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=False,
-            collate_fn=self.val_ds.collate_fn,
+            collate_fn=raw_audio_collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -416,8 +298,8 @@ class BaseDataModule(pl.LightningDataModule, ABC):
 
         return DataLoader(
             self.test_ds,
-            batch_size=self.batch_size,
+            batch_size=1, # Inference is done with batch size 1 to avoid mixed meeting boundaries
             num_workers=self.num_workers,
             shuffle=False,
-            collate_fn=self.test_ds.collate_fn,
+            collate_fn=raw_audio_collate_fn,
         )
