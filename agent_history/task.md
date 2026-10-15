@@ -1,0 +1,7 @@
+- `[x]` Create `ami_exploration.py` script with `# %%` cell markers
+  - `[x]` Setup & Initialization (Hydra, DataModule)
+  - `[x]` Section 1: Standard Scenario Visualization (Audio waveform, VADs, Source Count, Audio Player)
+  - `[x]` Section 2: Chunking Visualization
+  - `[x]` Section 3: Augmented Chunks Visualization
+  - `[x]` Section 4: Dataset Statistics & Transition Analysis (Class distribution, Event frequency, Transition histogram, Time since last event)
+- `[x]` Test execution of the script locally

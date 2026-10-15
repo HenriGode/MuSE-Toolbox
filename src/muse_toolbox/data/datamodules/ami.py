@@ -27,6 +27,7 @@ class AMIDataModule(BaseDataModule):
         augmentation: dict,
         sampling_frequency: int,
         label_parser=None, # Passed from hydra
+        id: str = "ami",
         *args, **kwargs
     ):
         super().__init__(
@@ -35,7 +36,7 @@ class AMIDataModule(BaseDataModule):
             min_context_s=min_context_s,
             train_items_per_epoch=train_items_per_epoch,
             augmentation=augmentation,
-            id="ami",
+            id=id,
             num_scenarios=None,
             *args, **kwargs
         )
@@ -56,8 +57,9 @@ class AMIDataModule(BaseDataModule):
         if self.data_is_prepared:
             return
             
+        self._handle_reset()
         self.precomputed_dir.mkdir(parents=True, exist_ok=True)
-        log.info("Precomputing continuous AMI meetings to memory-mappable numpy arrays...")
+        log.info(f"Precomputing continuous AMI meetings for '{self.id}' to memory-mappable numpy arrays...")
         
         single_speaker_chunks = []
         chunk_samples = int(self.chunk_length_s * self.sampling_frequency)
