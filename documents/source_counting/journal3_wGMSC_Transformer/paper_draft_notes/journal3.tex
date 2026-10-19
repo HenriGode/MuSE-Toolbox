@@ -25,6 +25,7 @@
 \newacronym{CTF}{CTF}{convolutive transfer function}
 \newacronym{MTF}{MTF}{multiplicative transfer function}
 \newacronym{RTF}{RTF}{relative transfer function}
+\newacronym{ATF}{ATF}{acoustic transfer function}
 \newacronym{MCLP}{MCLP}{multi channel linear prediction}
 \newacronym{MPDR}{MPDR}{minimum power distortionless response}
 \newacronym{MVDR}{MVDR}{minimum variance distortionless response}
@@ -156,7 +157,7 @@
 \maketitle
 
 \begin{abstract}
-  Accurately estimating the number of active sound sources in real-time is a fundamental prerequisite for multi-microphone acoustic signal processing tasks, such as source separation, localization, and assistive listening. Existing deep neural network (DNN)-based source counting methods often rely on long observation windows that introduce unacceptable latency for online applications, or they are strictly constrained to fixed microphone array geometries. In this paper, we propose a strictly STFT-frame causal, online acoustic sound source counting system that handles a variable number of input channels and dynamically adapts to arbitrary array geometries. Our approach leverages a causal Transformer-based architecture combined with robust spatial features, specifically the Whitened Generalized Magnitude Squared Coherence (GMSC). By employing time-reversed whitening, the network tracks both source activations and deactivations by measuring spatial coherence. Unlike traditional overlapped speech detection systems that rely on linguistic alignment, our model is trained on a purely acoustic power-based ground truth, allowing it to generalize to diverse, non-speech acoustic sources. To achieve array geometry agnosticism, the system utilizes an early attention-pooling mechanism to unify variable microphone counts, alongside a novel late-fusion strategy that injects physical microphone coordinates directly into the network via Feature-wise Linear Modulation (FiLM) layers. We comprehensively evaluate the proposed geometry-conditioned system through zero-shot testing on both simulated environments and real-world datasets, including BRUDEX, CHiME-6, and AMI. Our results demonstrate the effectiveness of combining strictly causal Transformers with physical coordinate conditioning to achieve robust, real-time sound source counting across mismatched and dynamic array configurations.
+  Accurately estimating the number of active sound sources in real-time is a fundamental prerequisite for multi-microphone acoustic signal processing tasks, such as source separation, localization, and assistive listening. Existing deep neural network (DNN)-based source counting methods often rely on long observation windows that introduce unacceptable latency for online applications, or they are strictly constrained to fixed microphone array geometries. In this paper, we propose a strictly STFT-frame causal, online acoustic sound source counting system that handles a variable number of input channels and dynamically adapts to arbitrary array geometries. Our approach leverages a causal Transformer-based architecture combined with robust spatial features, specifically the Whitened Generalized Magnitude Squared Coherence (GMSC). By employing time-reversed whitening, the network tracks both source activations and deactivations by measuring spatial coherence. Unlike traditional overlapped speech detection systems that rely on linguistic alignment, our model is trained on a purely acoustic power-based ground truth, allowing it to generalize to diverse, non-speech acoustic sources. To achieve array geometry agnosticism, the system utilizes an early attention-pooling mechanism to unify variable microphone counts, alongside a novel late-fusion strategy that injects physical microphone coordinates directly into the network via Feature-wise Linear Modulation (FiLM) layers. We comprehensively evaluate the proposed geometry-conditioned system through zero-shot testing on both simulated environments and real-world datasets, including BRUDEX, CHiME-6, and AMI. Our results demonstrate the effectiveness of combining strictly causal Transformers with physical coordinate conditioning to achieve robust, real-time sound source counting across mismatched and dynamic array configurations. We comprehensively evaluate the proposed geometry-conditioned system through zero-shot testing on both simulated environments and real-world datasets, including BRUDEX, CHiME-6, and AMI. Our results demonstrate the effectiveness of combining strictly causal Transformers with physical coordinate conditioning to achieve robust, real-time sound source counting across mismatched and dynamic array configurations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -187,31 +188,115 @@
 
 
 \section{Signal Model and Problem Formulation}
-% Formulate the mathematics of the microphone signals and the STFT domain representations.
+\label{sec:signal_model}
+
+In this section, we formulate the acoustic signal model in the time and \gls{STFT} domains, describe the underlying second-order spatial statistics with \gls{ATF} vectors, and formally define the strictly causal frame-level sound source counting problem.
+
+\subsection{Acoustic Signal Model in the Time and STFT Domains}
+\label{sec:signal_model_stft}
+We consider an acoustic scenario with $K_{\mathrm{max}}$ sound sources captured by an arbitrary array of $M$ microphones. Let $y_{m,l}$ denote the discrete-time signal recorded at the $m$-th microphone ($m \in \{1, \ldots, M\}$), sampled at a sampling frequency $f_s$, where $l \in \{1, \ldots, L\}$ denotes the discrete-time sample index and $L$ is the total number of samples in the considered signal segment.
+
+By applying the \gls{STFT} with an analysis window of length $L_{\mathrm{win}}$ and a frame shift of $L_{\mathrm{hop}}$ samples, the microphone signals are transformed into the time-frequency domain. The total number of \gls{STFT} frames $T$ obtained from a segment of $L$ samples is given by
+\begin{align}
+  T = \left\lfloor \frac{L - L_{\mathrm{win}}}{L_{\mathrm{hop}}} \right\rfloor + 1.
+  \label{eq:num_frames_def}
+\end{align}
+Discarding the non-informative DC ($f=0$) and Nyquist ($f=L_{\mathrm{win}}/2$) components yields $F = L_{\mathrm{win}}/2 - 1$ frequency bins. Stacking the \gls{STFT} coefficients of all $M$ microphones yields the multi-channel observation vector:
+\begin{align}
+  \mathbf{y}_{t,f} = \begin{bmatrix} y_{1,t,f} & y_{2,t,f} & \cdots & y_{M,t,f} \end{bmatrix}^{\mathrm{T}} \in \mathbb{C}^{M\times 1},
+  \label{eq:sig_vec_def}
+\end{align}
+where $t \in \{1, \ldots, T\}$ and $f \in \{1, \ldots, F\}$ denote the time frame index and frequency bin index, respectively, and $\{\cdot\}^{\mathrm{T}}$ denotes the transpose operator. For notational conciseness, the frequency bin index $f$ is omitted in the remainder of this section (i.e., $\mathbf{y}_t = \mathbf{y}_{t,f}$) whenever narrowband operations are implied.
+
+At each time frame $t$, the multi-microphone signal $\mathbf{y}_t$ is composed of the superposition of the acoustic contributions from all currently active sound sources and an additive ambient noise component $\mathbf{n}_t \in \mathbb{C}^{M\times 1}$, i.e.,
+\begin{align}
+  \mathbf{y}_t = \sum_{k=1}^{K_t} \mathbf{x}_{k,t} + \mathbf{n}_t,
+  \label{eq:acoustic_mixture_model}
+\end{align}
+where $K_t \in \{0, 1, \ldots, K_{\mathrm{max}}\}$ denotes the instantaneous number of active sound sources at time frame $t$. Importantly, $K_t$ is a broadband quantity (i.e., source activity is assumed to be frequency-independent across all frequency bins), and $\mathbf{x}_{k,t} \in \mathbb{C}^{M\times 1}$ denotes the spatial component of the $k$-th sound source.
+
+Under the \gls{MTF} approximation~\cite{avargel_multiplicative_2007}, the spatial source component vector $\mathbf{x}_{k,t}$ can be expressed as the product of the emitted source signal $s_{k,t} \in \mathbb{C}$ and the (time-invariant) \gls{ATF} vector $\mathbf{a}_k \in \mathbb{C}^{M\times 1}$, i.e.,
+\begin{align}
+  \mathbf{x}_{k,t} = \mathbf{a}_k s_{k,t} \quad \forall k \in \{1, \ldots, K_t\},
+  \label{eq:atf_source_component}
+\end{align}
+with the \gls{ATF} vector of the $k$-th sound source defined as
+\begin{align}
+  \mathbf{a}_k = \begin{bmatrix} a_{1,k} & a_{2,k} & \cdots & a_{M,k} \end{bmatrix}^{\mathrm{T}} \in \mathbb{C}^{M\times 1},
+\end{align}
+where $a_{m,k}$ represents the acoustic transfer function relating source $k$ to the $m$-th microphone. We assume that the \gls{ATF} vectors of all sources are linearly independent.
+By collecting the \gls{ATF} vectors of the $K_t$ active sources into the mixing matrix
+\begin{align}
+  \mathbf{A}_t = \begin{bmatrix} \mathbf{a}_1 & \mathbf{a}_2 & \cdots & \mathbf{a}_{K_t} \end{bmatrix} \in \mathbb{C}^{M \times K_t},
+\end{align}
+and defining the source signal vector $\mathbf{s}_t = \begin{bmatrix} s_{1,t} & \cdots & s_{K_t,t} \end{bmatrix}^{\mathrm{T}} \in \mathbb{C}^{K_t \times 1}$, the multi-microphone observation vector in~\Cref{eq:acoustic_mixture_model} can be compactly written as:
+\begin{align}
+  \mathbf{y}_t = \mathbf{A}_t \mathbf{s}_t + \mathbf{n}_t.
+  \label{eq:matrix_mixture_model}
+\end{align}
+
+\subsection{Second-Order Spatial Statistics}
+\label{sec:second_order_statistics}
+Assuming that the individual sound sources are mutually uncorrelated and uncorrelated with the additive ambient noise, the spatial covariance matrix $\mathbf{R}_{y,t} \in \mathbb{C}^{M\times M}$ of the noisy microphone signals at time frame $t$ is given by
+\begin{align}
+  \mathbf{R}_{y,t} = \mathbb{E}\left\{ \mathbf{y}_t \mathbf{y}_t^{\mathrm{H}} \right\} = \mathbf{R}_{x,t} + \mathbf{R}_{n,t},
+  \label{eq:cov_model}
+\end{align}
+where $\mathbb{E}\{\cdot\}$ denotes the expectation operator, $\{\cdot\}^{\mathrm{H}}$ denotes the conjugate transpose operator, $\mathbf{R}_{n,t} = \mathbb{E}\{\mathbf{n}_t \mathbf{n}_t^{\mathrm{H}}\}$ denotes the noise covariance matrix, and $\mathbf{R}_{x,t} = \mathbb{E}\{\mathbf{x}_t \mathbf{x}_t^{\mathrm{H}}\}$ denotes the spatial covariance matrix of the sound sources, with $\mathbf{x}_t = \sum_{k=1}^{K_t}\mathbf{x}_{k,t}$. Substituting~\Cref{eq:matrix_mixture_model} into~\Cref{eq:cov_model} yields:
+\begin{align}
+  \mathbf{R}_{x,t} = \mathbf{A}_t \bm{\Phi}_{s,t} \mathbf{A}_t^{\mathrm{H}} = \sum_{k=1}^{K_t} \phi_{s,k,t} \, \mathbf{a}_k \mathbf{a}_k^{\mathrm{H}},
+  \label{eq:clean_cov_model}
+\end{align}
+where $\bm{\Phi}_{s,t} = \mathrm{diag}\left\{ \begin{bmatrix} \phi_{s,1,t} & \cdots & \phi_{s,K_t,t} \end{bmatrix} \right\} \in \mathbb{R}_{+}^{K_t \times K_t}$ is a diagonal matrix containing the time-varying power spectral densities $\phi_{s,k,t} = \mathbb{E}\{|s_{k,t}|^2\} > 0$ of the actively contributing sound sources.
+
+Because the \gls{ATF} vectors $\mathbf{a}_k$ are assumed to be linearly independent and the active source powers are strictly non-zero, the rank of the clean spatial covariance matrix $\mathbf{R}_{x,t}$ in~\Cref{eq:clean_cov_model} is directly determined by the number of active sources, i.e.,
+\begin{align}
+  \mathrm{rank}\left( \mathbf{R}_{x,t} \right) = \min(M, K_t).
+  \label{eq:rank_relation}
+\end{align}
+This fundamental algebraic relationship between source multiplicity and spatial covariance matrix rank provides the theoretical foundation for multi-channel spatial analysis and spatial coherence metrics.
 
 \subsection{Acoustic Sound Source Counting Framework}
-% Define the objective: estimating the number of active sources $K_t$ per frame.
-% CRITICAL: Explicitly contrast your "acoustic ground truth" (power-based VAD detecting all sound energy, e.g., coughs, radios) against traditional text-driven linguistic alignment (e.g., MFA).
+\label{sec:problem_formulation}
+The core objective of this work is to estimate the instantaneous number of active sound sources $K_t$ at each time frame $t$ from the multi-channel acoustic observations. Formally, we define the sound source counting estimator $\mathcal{M}$ as a mapping from the multi-channel time-frequency observations to the estimated instantaneous source count $\widehat{K}_t$:
+\begin{align}
+  \widehat{K}_t = \mathcal{M}\left( \left\{ \mathbf{y}_{\tau, f} \right\}_{\tau=1, f=1}^{t, F} \right) \quad \forall t \in \{1, \ldots, T\}.
+  \label{eq:strict_causality_definition}
+\end{align}
+To enable low-latency operation in real-time acoustic applications, we impose a strict \gls{STFT} frame-level causality constraint: the estimation at time frame $t$ is conditioned exclusively on current and past observations up to frame $t$ ($\tau \leq t$), with zero look-ahead into future frames ($\tau > t$). All neural network architectures evaluated in this work are designed to strictly comply with~\Cref{eq:strict_causality_definition}.
+
+We formulate source counting as an integer classification problem with $(K_{\mathrm{max}} + 1)$ mutually exclusive classes, where $K_t = 0$ corresponds to source absence (ambient noise only). For a given audio segment comprising $T$ time frames, the ground-truth source count sequence is represented as a $T$-dimensional target vector:
+\begin{align}
+  \mathbf{k} = \begin{bmatrix} K_1 & K_2 & \cdots & K_T \end{bmatrix}^{\mathrm{T}} \in \{0, 1, \ldots, K_{\mathrm{max}}\}^{T}.
+  \label{eq:target_vector}
+\end{align}
+
+It is essential to distinguish the acoustic ground truth used in this paper from conventional text-driven linguistic alignments commonly found in the speech diarization literature. Traditional diarization and voice activity detection benchmarks often define ground-truth activity using linguistic forced-alignment tools (e.g., the Montreal Forced Aligner~\cite{mcauliffe2017montreal}), which label speech activity strictly based on phonetically transcribed text. Consequently, non-linguistic vocalizations (such as coughs, throat clearings, laughter, and heavy breathing) as well as non-speech acoustic sound events are labeled as inactive, even though substantial directional acoustic power impinges upon the microphone array. In contrast, in this work we define $K_t$ based on \emph{acoustic sound presence}: any sound source producing energy above an acoustic presence threshold relative to the background noise is classified as active, ensuring the model reflects the physical reality of the sound field.
 
 
 \section{Feature Extraction}
 % Detail the inputs that will be fed into the network.
 
 \subsection{Spectral Features}
-% Briefly describe the single-channel Mel-filterbanks (80 filters) used as the baseline spectral representation.
 
-\subsection{Spatial Coherence Features: Whitened GMSC}
+\subsubsection{Log-Mel Filterbanks}
+% Briefly concisely but completely describe the single-channel Mel-filterbanks (80 filters) used as the baseline spectral representation.
+
+\subsection{Spatial Features}
+
+\subsubsection{IPD / CSIPD}
+
+\subsubsection{Whitened GMSC}
 % From the Gode & Doclo baseline.
-\subsubsection{Source Activation Detection}
+\paragraph{Source Activation Detection}
 % Detail the forward whitening process and how it creates a rank-1 update when a new source appears.
-\subsubsection{Source Deactivation Detection}
+\paragraph{Source Deactivation Detection}
 % Detail your proposed time-reversed whitening approach to track sources dropping out.
 
-\subsection{Baseline Spatial Features for Comparison}
-% Mention IPD (from Cornell et al.) and pure multi-channel STFT, which will be used in the ablation studies later.
+\subsection{Combination of Features} % This subsection should maybe already go into the proposed architecture section and it is actually also not really clear up to now how we will combine multiple features. 
 
 
-\section{Proposed Geometry-Conditioned Architecture}
+\section{Proposed Architecture / Model Design / Method}
 % The core technical contribution section (Phase 1, 2, and 3 of your project plan).
 
 \subsection{Strictly Causal Transformer Base}

@@ -1,12 +1,12 @@
 import logging
 from typing import Any
 import torch
+import functools
 
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
 from muse_toolbox.models.components.channel_combinator.base_channel_combinator import BaseChannelCombinator
-
 from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,6 @@ class COSADmodule(BaseLitModel):
             check_causality (bool): Whether to enforce causality checks on the model.
             permute_channels (bool): If True, randomly permutes channels during training.
         """
-        import functools
         if isinstance(feature_extractor, functools.partial):
             feature_extractor = feature_extractor(transform=transform)
             
