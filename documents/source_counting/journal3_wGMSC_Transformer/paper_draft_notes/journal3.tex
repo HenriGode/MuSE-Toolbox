@@ -98,6 +98,9 @@
 \newacronym{F1}{F1}{F1 score}
 \newacronym{AMI}{AMI}{Augmented Multi-party Interaction}
 \newacronym{BRUDEX}{BRUDEX}{binaural room impulse responses with uniformly distributed external microphones}
+\newacronym{IPD}{IPD}{inter-channel phase difference}
+\newacronym{CSIPD}{CSIPD}{cosine and sine inter-channel phase difference}
+\newacronym{wGMSC}{wGMSC}{whitened generalized magnitude-squared coherence}
 
 %-------------------------------------
 
@@ -106,7 +109,7 @@
 \crefname{equation}{}{}
 \newcommand{\crefrangeconjunction}{--}
 \crefformat{appsec}{Appendix #2#1#3} % ADD this line to define the appendix section format
-\usepackage{amssymb,mathtools,nicefrac,bm}
+\usepackage{amssymb,mathtools,nicefrac,bm,booktabs}
 
 %--------------------------------
 
@@ -275,23 +278,182 @@ It is essential to distinguish the acoustic ground truth used in this paper from
 
 
 \section{Feature Extraction}
-% Detail the inputs that will be fed into the network.
+\label{sec:feature_extraction}
+
+The feature extraction front-end maps the multi-channel acoustic observations into real-valued representations that expose spectral cues (e.g., harmonicity and speech presence) and/or spatial cues (e.g., inter-channel phase differences and spatial coherence). In accordance with~\Cref{eq:strict_causality_definition}, all feature extractors evaluated in this work are strictly causal. Throughout this section, extracted feature tensors follow the unified shape convention
+\begin{align}
+  C \times D \times T,
+  \label{eq:tensor_shape_convention}
+\end{align}
+where $C$ denotes the spatial channel or microphone pair dimension, $D$ is the feature dimension, and $T$ is the sequence dimension corresponding to the \gls{STFT} time frames. A comprehensive overview of all investigated spectral and spatial feature representations, including their output tensor shapes, dimensional scaling, and underlying acoustic principles, is summarized in~\Cref{tab:feature_overview}.
+
+\begin{table*}[t]
+\centering
+\caption{Overview of extracted spectral and spatial acoustic features for online sound source counting.}
+\label{tab:feature_overview}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l c c c >{\raggedright\arraybackslash}p{7.0cm} @{}}
+\toprule
+\textbf{Feature Representation} & \textbf{Domain} & \textbf{Output Dimensions} & \textbf{Value Range} & \textbf{Key Idea and Underlying Principle} \\
+\midrule
+Cartesian STFT ($\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{cart})}$) & Spectral & $M \times 2F \times T$ & $\mathbb{R}$ & concatenate real and imaginary part of \gls{STFT} coefficients \\
+Polar STFT ($\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{pol})}$) & Spectral & $M \times 3F \times T$ & $[0, \infty) \text{ and } [-1, 1]$ & concatenate magnitude and continuous cosine/sine phase \\
+Log-Mel Energies ($\mathbf{Z}_{\mathrm{mel}}$) & Spectral & $M \times D_{\mathrm{mel}} \times T$ & $\mathbb{R}$ & Auditory-motivated spectral envelope and harmonicity compressed via Mel filterbank and logarithm.\textsuperscript{*} \\
+\midrule
+IPD ($\mathbf{Z}_{\mathrm{IPD}}$) & Spatial & $(M(M-1))/2 \times F \times T$ & $(-\pi, \pi]$ & Pairwise wrapped phase differences \\
+CSIPD ($\mathbf{Z}_{\mathrm{CSIPD}}$) & Spatial & $(M(M-1))/2 \times 2F \times T$ & $[-1, 1]$ & Continuous unit-circle projection of IPD \\
+GMSC ($\mathbf{Z}_{\mathrm{GMSC}}$) & Spatial & $1 \times F \times T$ & $[0, 1]$ & Multi-channel coherence metric \\
+wGMSC ($\mathbf{Z}_{\mathrm{wGMSC}}$) & Spatial & $1 \times 2F \times T$ & $[0, 1]$ & Whitening transform highlighting source activations and deactivations \\
+\bottomrule
+\multicolumn{5}{@{}p{\textwidth}@{}}{\footnotesize \textsuperscript{*}In single-channel baseline configurations (as in~\cite{cornell2022overlapped}), Log-Mel features are extracted solely from a reference microphone, yielding $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})} \in \mathbb{R}^{1 \times D_{\mathrm{mel}} \times T}$.}
+\end{tabular*}
+\end{table*}
 
 \subsection{Spectral Features}
+\label{sec:spectral_features}
+Spectral features characterize the frequency-domain energy distribution and harmonic structure across individual microphone channels. In the following, we describe the multi-channel \gls{STFT} representation and Log-Mel filterbank energies.
 
-\subsubsection{Log-Mel Filterbanks}
-% Briefly concisely but completely describe the single-channel Mel-filterbanks (80 filters) used as the baseline spectral representation.
+\subsubsection{Multi-Channel STFT Representation}
+\label{sec:feat_stft}
+Stacking the multi-channel observation vectors $\mathbf{y}_{t,f} \in \mathbb{C}^{M \times 1}$ from~\Cref{eq:sig_vec_def} along the frequency and time dimensions yields the complex time-frequency tensor $\mathbf{Y} \in \mathbb{C}^{M \times F \times T}$, with scalar coefficients $y_{m,t,f} \in \mathbb{C}$. To represent these complex coefficients in real-valued neural networks, two representations are considered:
+\begin{enumerate}
+  \item \textbf{Cartesian Decomposition}: Each complex coefficient is decomposed into its real and imaginary parts:
+  \begin{align}
+    y_{m,t,f} = \Re\{y_{m,t,f}\} + \mathrm{i} \, \Im\{y_{m,t,f}\},
+  \end{align}
+  where $\mathrm{i} = \sqrt{-1}$ is the imaginary unit, and $\Re\{\cdot\}$ and $\Im\{\cdot\}$ denote the real and imaginary parts of a complex number, respectively. Concatenating both components along the frequency axis yields the linear feature vector
+  \begin{align}
+    \mathbf{z}_{m,t}^{(\mathrm{cart})} = \begin{bmatrix} \Re\{\mathbf{y}_{m,t}\} \\ \Im\{\mathbf{y}_{m,t}\} \end{bmatrix} \in \mathbb{R}^{2F \times 1},
+    \label{eq:feat_stft_cart}
+  \end{align}
+  where $\mathbf{y}_{m,t} = [y_{m,t,1}, \ldots, y_{m,t,F}]^{\mathrm{T}} \in \mathbb{C}^{F \times 1}$. This linear representation preserves both magnitude and phase without trigonometric operations, yielding a feature dimension of $2F$ per microphone.
+  \item \textbf{Polar Decomposition}: Each complex coefficient is decomposed into its magnitude $|y_{m,t,f}|$ and phase angle $\phi_{m,t,f} = \arg\{y_{m,t,f}\}$, where $\arg\{\cdot\}$ denotes the argument of a complex number. To prevent wrap-around phase discontinuities at $\pm\pi$, the phase is mapped continuously via cosine and sine functions:
+  \begin{align}
+    \mathbf{z}_{m,t}^{(\mathrm{pol})} = \begin{bmatrix} |\mathbf{y}_{m,t}| \\ \cos(\bm{\phi}_{m,t}) \\ \sin(\bm{\phi}_{m,t}) \end{bmatrix} \in \mathbb{R}^{3F \times 1},
+    \label{eq:feat_stft_polar}
+  \end{align}
+  where $|\mathbf{y}_{m,t}| = [|y_{m,t,1}|, \ldots, |y_{m,t,F}|]^{\mathrm{T}}$ and $\bm{\phi}_{m,t} = [\phi_{m,t,1}, \ldots, \phi_{m,t,F}]^{\mathrm{T}}$, with trigonometric functions applied element-wise. This explicitly decouples spectral energy from spatial phase patterns, resulting in a feature dimension of $3F$ per microphone.
+\end{enumerate}
+Stacking across all $M$ microphones and $T$ time frames yields the real-valued feature tensors
+\begin{align}
+  \mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{cart})} \in \mathbb{R}^{M \times 2F \times T}, \quad \mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{pol})} \in \mathbb{R}^{M \times 3F \times T},
+  \label{eq:feat_stft_tensor}
+\end{align}
+respectively.
+
+\subsubsection{Log-Mel Filterbank Energies}
+\label{sec:feat_logmel}
+As an alternative to raw spectral coefficients, Log-Mel filterbank energies provide a lower-dimensional representation of spectral envelopes and harmonicity that models the frequency resolution of the human auditory system. This serves as the primary spectral feature representation in Cornell et al.~\cite{cornell2022overlapped}.
+
+For microphone $m$ at time frame $t$, the short-time power spectrum is defined as the squared magnitude vector $\mathbf{p}_{m,t} = [|y_{m,t,1}|^2, \ldots, |y_{m,t,F}|^2]^{\mathrm{T}} \in \mathbb{R}_{+}^{F \times 1}$. To compress the linear frequency axis onto the Mel scale, a filterbank weighting matrix $\mathbf{W}_{\mathrm{mel}} \in \mathbb{R}_{+}^{D_{\mathrm{mel}} \times F}$ comprising $D_{\mathrm{mel}}$ overlapping triangular bandpass filters is applied. Subsequent logarithmic dynamic range compression yields the Log-Mel energy vector
+\begin{align}
+  \mathbf{z}_{m,t}^{(\mathrm{mel})} = \log\left\{ \mathbf{W}_{\mathrm{mel}} \mathbf{p}_{m,t} + \epsilon \right\} \in \mathbb{R}^{D_{\mathrm{mel}} \times 1},
+  \label{eq:feat_logmel_vec}
+\end{align}
+where $\log\{\cdot\}$ is applied element-wise and $\epsilon > 0$ is a small constant ensuring numerical stability. Stacking across all $M$ microphones and $T$ time frames yields the multi-channel Log-Mel feature tensor:
+\begin{align}
+  \mathbf{Z}_{\mathrm{mel}} \in \mathbb{R}^{M \times D_{\mathrm{mel}} \times T}.
+  \label{eq:feat_logmel_tensor}
+\end{align}
+In single-channel baseline configurations (as in~\cite{cornell2022overlapped}), Log-Mel features are extracted exclusively from a designated reference microphone $m_{\mathrm{ref}}$, yielding the reduced tensor $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})} \in \mathbb{R}^{1 \times D_{\mathrm{mel}} \times T}$.
 
 \subsection{Spatial Features}
+\label{sec:feat_spatial}
+While spectral features characterize the time-frequency energy distribution and harmonic structure of individual channels, spatial features capture inter-channel phase and coherence relationships that encode source positions and spatial diversity across the microphone array.
 
-\subsubsection{IPD / CSIPD}
+\subsubsection{Inter-Channel Phase Differences (IPD and CSIPD)}
+\label{sec:feat_ipd}
+Inter-channel phase differences characterize the relative time delays of acoustic wavefronts arriving at pairs of microphones. Let $\mathcal{P} \subseteq \{(i, j) \mid 1 \le i < j \le M\}$ denote a set of $P = |\mathcal{P}| = (M(M-1))/2$ microphone pairs. For a given pair $p = (i, j) \in \mathcal{P}$ at time frame $t$ and frequency bin $f$, the \gls{IPD} is defined as the wrapped phase difference between the respective \gls{STFT} coefficients:
+\begin{align}
+  \theta_{p,t,f} = \arg\{y_{i,t,f} y_{j,t,f}^*\} \in (-\pi, \pi],
+  \label{eq:feat_ipd_scalar}
+\end{align}
+where $\{\cdot\}^*$ denotes complex conjugation. Collecting the phase differences across all $F$ frequency bins yields the \gls{IPD} feature vector
+\begin{align}
+  \mathbf{z}_{p,t}^{(\mathrm{IPD})} = \begin{bmatrix} \theta_{p,t,1} & \cdots & \theta_{p,t,F} \end{bmatrix}^{\mathrm{T}} \in (-\pi, \pi]^{F \times 1},
+  \label{eq:feat_ipd_vec}
+\end{align}
+yielding a feature dimension of $D_{\mathrm{IPD}} = F$ per microphone pair.
 
-\subsubsection{Whitened GMSC}
-% From the Gode & Doclo baseline.
-\paragraph{Source Activation Detection}
-% Detail the forward whitening process and how it creates a rank-1 update when a new source appears.
-\paragraph{Source Deactivation Detection}
-% Detail your proposed time-reversed whitening approach to track sources dropping out.
+Because the cyclic nature of phase values introduces artificial discontinuities around $\pm\pi$, the \gls{CSIPD} projects $\theta_{p,t,f}$ onto the unit circle via trigonometric expansion~\cite{cornell2022overlapped}:
+\begin{align}
+  \mathbf{z}_{p,t}^{(\mathrm{CSIPD})} = \begin{bmatrix} \cos(\mathbf{z}_{p,t}^{(\mathrm{IPD})}) \\ \sin(\mathbf{z}_{p,t}^{(\mathrm{IPD})}) \end{bmatrix} \in [-1, 1]^{2F \times 1},
+  \label{eq:feat_csipd_vec}
+\end{align}
+resulting in a continuous feature representation with dimension $D_{\mathrm{CSIPD}} = 2F$. Beyond eliminating phase wrapping ambiguities, an essential property of \gls{CSIPD} features is that both the generalized cross-correlation with phase transform (GCC-PHAT) and the steered response power (SRP-PHAT) angular spectra can be represented as linear transformations of $\mathbf{z}_{p,t}^{(\mathrm{CSIPD})}$~\cite{cornell2022overlapped}. Consequently, downstream neural network layers can implicitly synthesize spatial steering responses without requiring explicit angular grid evaluations.
+
+Stacking across all $P$ microphone pairs and $T$ time frames yields the spatial feature tensors
+\begin{align}
+  \mathbf{Z}_{\mathrm{IPD}} \in \mathbb{R}^{P \times F \times T}, \quad \mathbf{Z}_{\mathrm{CSIPD}} \in \mathbb{R}^{P \times 2F \times T},
+  \label{eq:feat_ipd_tensor}
+\end{align}
+respectively.
+
+\subsubsection{Generalized Magnitude-Squared Coherence (GMSC and wGMSC)}
+\label{sec:feat_gmsc}
+Beyond inter-channel phase differences, the spatial coherence of the sound field provides crucial information about the acoustic scene that directly relates to the source count $K_t$:
+\begin{itemize}
+  \item \textbf{Diffuse Noise ($K_t = 0$):} In a diffuse noise field, the acoustic signals at different microphones are largely uncorrelated, resulting in low spatial coherence.
+  \item \textbf{Single Active Source ($K_t = 1$):} When a single localized source is active, its \gls{ATF} vector $\mathbf{a}_k$ induces a dominant rank-1 component in~\Cref{eq:clean_cov_model}, resulting in high spatial coherence.
+  \item \textbf{Multiple Active Sources ($K_t \ge 2$):} When multiple concurrent localized sources are active, the superimposition of multiple linearly independent \gls{ATF} vectors destroys this directional structure, causing the sound field to appear spatially incoherent.
+\end{itemize}
+While pairwise spatial coherence could be evaluated across all $P$ microphone pairs, yielding a pair-dependent representation analogous to \gls{IPD}, the \gls{GMSC}~\cite{gmsc_ramirez_2008,gode2026dnnbased} generalizes pairwise coherence by condensing the entire multi-channel spatial covariance matrix into a scalar coherence metric per frequency bin and time frame independent of $M$, i.e., $C=1$.
+
+\paragraph{Mathematical Definition of GMSC}
+For any positive semi-definite spatial covariance matrix $\mathbf{R} \in \mathbb{C}^{M \times M}$, the \gls{GMSC}~\cite{gmsc_ramirez_2008} maps $\mathbf{R}$ to a bounded real-valued scalar metric $\operatorname{gmsc}\{\mathbf{R}\} \in [0, 1]$ via diagonal normalization and eigenvalue extraction:
+\begin{align}
+  \bm{\Gamma}\{\mathbf{R}\} &= (\mathrm{diag}\{\mathbf{R}\})^{-\nicefrac{1}{2}} \mathbf{R} (\mathrm{diag}\{\mathbf{R}\})^{-\nicefrac{1}{2}}, \label{eq:coherence_operator} \\
+  \operatorname{gmsc}\{\mathbf{R}\} &= \frac{\lambda_{\max}\{\bm{\Gamma}\{\mathbf{R}\}\} - 1}{M - 1} \in [0, 1], \label{eq:gmsc_operator}
+\end{align}
+where $\mathrm{diag}\{\mathbf{R}\}$ denotes a diagonal matrix containing the diagonal entries of $\mathbf{R}$, $\bm{\Gamma}\{\mathbf{R}\}$ denotes the spatial coherence matrix containing all pairwise complex coherence values (i.e., with unit diagonal entries), and $\lambda_{\max}\{\cdot\}$ denotes the principal eigenvalue, with $0$ indicating low spatial coherence and $1$ indicating high spatial coherence.
+
+
+\paragraph{Standard GMSC}
+At each time frame $t$ and frequency bin $f$, the short-time spatial covariance matrix of the microphone observation vector $\mathbf{y}_{t,f} \in \mathbb{C}^{M \times 1}$ is recursively estimated as
+\begin{align}
+  \widehat{\mathbf{R}}_{y,t,f} = \alpha \widehat{\mathbf{R}}_{y,t-1,f} + (1-\alpha) \mathbf{y}_{t,f} \mathbf{y}_{t,f}^{\mathrm{H}},
+  \label{eq:cov_est_rec}
+\end{align}
+where the forgetting factor $\alpha = e^{-\nicefrac{\tau_{\mathrm{fs}}}{\tau_{\alpha}}}$ depends on the \gls{STFT} frame shift $\tau_{\mathrm{fs}} = \nicefrac{L_{\mathrm{hop}}}{f_s}$ and a smoothing time constant $\tau_{\alpha}$, and $\{\cdot\}^{\mathrm{H}}$ denotes the conjugate transpose. Evaluating~\Cref{eq:gmsc_operator} directly on $\widehat{\mathbf{R}}_{y,t,f}$ yields the \gls{GMSC} coefficient $\gamma_{y,t,f} = \operatorname{gmsc}\{\widehat{\mathbf{R}}_{y,t,f}\}$. Collecting values across all $F$ frequency bins yields the \gls{GMSC} feature vector:
+\begin{align}
+  \mathbf{z}_{t}^{(\mathrm{GMSC})} = \begin{bmatrix} \gamma_{y,t,1} & \cdots & \gamma_{y,t,F} \end{bmatrix}^{\mathrm{T}} \in [0, 1]^{F \times 1}.
+  \label{eq:feat_gmsc_vec}
+\end{align}
+
+\paragraph{Whitened GMSC (wGMSC)}
+Because mixtures of multiple concurrent sources exhibit low coherence similar to diffuse noise, standard \gls{GMSC} cannot detect source transitions in ongoing multi-talker scenarios. To resolve this ambiguity, the \gls{wGMSC}~\cite{gode2026dnnbased} whitens the sound field with a reference covariance matrix containing the already active sources. This effectively converts all previously active sources into spatially white noise, such that any newly activating source acts as a single localized source against a white background, generating a prominent coherence peak:
+\begin{enumerate}
+  \item \textbf{Source Activation Feature}: To detect newly activating sources, $\widehat{\mathbf{R}}_{y,t,f}$ is whitened against a reference covariance matrix $\mathbf{R}_{v,t,f} = \widehat{\mathbf{R}}_{y,t-t_v,f}$ taken from a causal lookback window of $t_v$ frames:
+  \begin{align}
+    \mathbf{R}_{w,t,f}^{(\mathrm{a})} = \mathbf{R}_{v,t,f}^{-\nicefrac{\mathrm{H}}{2}} \widehat{\mathbf{R}}_{y,t,f} \mathbf{R}_{v,t,f}^{-\nicefrac{1}{2}},
+    \label{eq:whitening_act}
+  \end{align}
+  where the matrix square-root factor $\mathbf{R}_{v,t,f}^{\nicefrac{1}{2}}$ is defined such that $\mathbf{R}_{v,t,f}^{\nicefrac{\mathrm{H}}{2}}\mathbf{R}_{v,t,f}^{\nicefrac{1}{2}} = \mathbf{R}_{v,t,f}$ (e.g., Cholesky decomposition). Evaluating~\Cref{eq:gmsc_operator} yields the activation \gls{GMSC} $\gamma_{t,f}^{(\mathrm{a})} = \operatorname{gmsc}\{\mathbf{R}_{w,t,f}^{(\mathrm{a})}\} \in [0, 1]$. Stacking across frequency yields $\bm{\gamma}_{t}^{(\mathrm{a})} = [\gamma_{t,1}^{(\mathrm{a})}, \dots, \gamma_{t,F}^{(\mathrm{a})}]^{\mathrm{T}} \in [0, 1]^{F \times 1}$.
+  
+  \item \textbf{Source Deactivation Feature}: To track sources ceasing activity while strictly maintaining causality, source deactivations are modeled as time-reversed activations~\cite{gode2026dnnbased}. In this formulation, the past covariance matrix contains the deactivated source, while the current covariance matrix does not. To avoid recursive tail leakage from the deactivated source into the current estimate, covariance matrices are estimated via a rectangular moving-average window of length $L_{\mathrm{ma}} \le t_v$:
+  \begin{align}
+    \widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})} = \frac{1}{L_{\mathrm{ma}}} \sum_{l=0}^{L_{\mathrm{ma}}-1} \mathbf{y}_{t-l,f} \mathbf{y}_{t-l,f}^{\mathrm{H}}.
+    \label{eq:cov_est_ma}
+  \end{align}
+  Whitening the past covariance matrix with the current covariance matrix yields:
+  \begin{align}
+    \mathbf{R}_{w,t,f}^{(\mathrm{d})} = \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{\mathrm{H}}{2}} \widehat{\mathbf{R}}_{y,t-t_v,f}^{(\mathrm{ma})} \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{1}{2}}.
+    \label{eq:whitening_deact}
+  \end{align}
+  The deactivation \gls{GMSC} is evaluated as $\gamma_{t,f}^{(\mathrm{d})} = \operatorname{gmsc}\{\mathbf{R}_{w,t,f}^{(\mathrm{d})}\} \in [0, 1]$, yielding the deactivation vector $\bm{\gamma}_{t}^{(\mathrm{d})} = [\gamma_{t,1}^{(\mathrm{d})}, \dots, \gamma_{t,F}^{(\mathrm{d})}]^{\mathrm{T}} \in [0, 1]^{F \times 1}$. Because this deactivation feature relies strictly on observations $\tau \le t$, causality is preserved, with an inherent processing delay of $t_v$ frames after a deactivation occurs.
+\end{enumerate}
+Concatenating the activation and deactivation feature vectors yields the bidirectional \gls{wGMSC} feature vector:
+\begin{align}
+  \mathbf{z}_{t}^{(\mathrm{wGMSC})} = \begin{bmatrix} \bm{\gamma}_{t}^{(\mathrm{a})} \\ \bm{\gamma}_{t}^{(\mathrm{d})} \end{bmatrix} \in [0, 1]^{2F \times 1}.
+  \label{eq:feat_wgmsc_vec}
+\end{align}
+
+Stacking across all $T$ time frames yields the real-valued spatial feature tensors:
+\begin{align}
+  \mathbf{Z}_{\mathrm{GMSC}} \in \mathbb{R}^{1 \times F \times T}, \quad \mathbf{Z}_{\mathrm{wGMSC}} \in \mathbb{R}^{1 \times 2F \times T},
+  \label{eq:feat_gmsc_tensors}
+\end{align}
+respectively.
 
 \subsection{Combination of Features} % This subsection should maybe already go into the proposed architecture section and it is actually also not really clear up to now how we will combine multiple features. 
 
