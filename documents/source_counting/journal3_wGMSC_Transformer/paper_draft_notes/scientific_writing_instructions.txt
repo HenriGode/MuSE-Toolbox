@@ -1,0 +1,183 @@
+================================================================================
+SCIENTIFIC WRITING STYLE & TERMINOLOGY GUIDELINES
+Acoustic Signal Processing & Machine Learning (Carl von Ossietzky Universität Oldenburg)
+================================================================================
+
+1. CORE PHILOSOPHY: UNCOMPROMISING CONSISTENCY
+--------------------------------------------------------------------------------
+- Never vary terminology for the sake of stylistic variety. If the same entity,
+  concept, parameter, or hardware component is meant, ALWAYS use the EXACT same term.
+- Synonyms create ambiguity in scientific writing. Consistency is not considered
+  repetitive or boring; it is essential for precision, clarity, and preventing
+  any misunderstanding by reviewers and readers.
+
+2. PREFERRED TERMINOLOGY & CANONICAL NAMING
+--------------------------------------------------------------------------------
+- Hardware & Acoustic Sensors:
+  * ALWAYS use "microphone", "microphones", "microphone array", "microphone pairs",
+    and "microphone count" (M).
+  * NEVER use "sensor", "sensors", "sensor array", or "sensor count" unless explicitly
+    referring to generalized non-acoustic sensor networks.
+
+- Sources, Scene Entities & Counting: Sound Sources vs. Speakers:
+  * Theoretical & Methodological Sections (Signal Model, Problem Formulation, Feature Extraction, Architecture):
+    - The physics, signal formulation, spatial statistics, spatial features (IPD, PSC, GMSC, wGMSC),
+      and neural network architecture are designed for GENERAL acoustic sound fields and should
+      generalize to any acoustic source type.
+    - Therefore, in these sections (Sections I, II, III, IV), ALWAYS strictly use:
+      "sound source(s)", "active sound source(s)", "concurrent sound sources", and "source count" (K_t).
+    - NEVER use "speaker", "talker", or "speaker count" in these general theoretical/methodological sections.
+  * Dataset & Experimental Sections (Datasets, Experimental Setup, Evaluation Metrics, Results):
+    - In the entire Datasets section and speech-based experimental evaluation (using LibriSpeech,
+      BRUDEX, AMI meeting corpus, CHiME-6), all evaluated scenarios exclusively comprise human speech utterances.
+    - Therefore, in these empirical sections, ALWAYS consistently use:
+      "speaker(s)", "active speaker(s)", "concurrent speakers", "single-speaker",
+      "conversational partners", and "speaker count".
+    - Avoid using "sound source" when referring to the human participants, their physical positions,
+      or their relative powers in the dataset descriptions (e.g., use "active speakers",
+      "the speakers maintain a minimum distance", "relative speaker powers").
+    - Exception: Standard acoustic simulation methodology terms retain their canonical names
+      (e.g., "image source method", "clean speech signal components").
+
+- Acoustic Transfer Functions & Directional Quantities:
+  * ALWAYS use "acoustic transfer function (ATF)" and "ATF vector" (a_k).
+  * NEVER use "spatial steering vector", "steering vector", or "steering factor".
+
+- Time & Frequency Units:
+  * Time: ALWAYS use "time frame t" (or "STFT time frame t") for discrete frame indices,
+    and "discrete-time sample index l" for sample-level indices.
+  * Frequency: ALWAYS use "frequency bin f" (or "STFT frequency bin f").
+  * Lengths & Shifts: Use "window length L_win" and "frame shift L_hop".
+
+- Smoothing Parameters & Physical Constants:
+  * Time Constants: Always explicitly specify the time smoothing constant tau_alpha
+    together with the STFT frame shift tau_fs = L_hop / f_s, and explicitly give the
+    relation for the exponential forgetting factor: alpha = exp(-tau_fs / tau_alpha).
+  * Never introduce a forgetting factor alpha without connecting it to its time constant tau_alpha.
+
+- Causality & Latency:
+  * ALWAYS use "strictly causal" (with explicit constraint tau <= t, zero look-ahead).
+  * NEVER use "causal" ambiguously without defining whether future look-ahead is permitted.
+
+- Hyphenation Standards (Standardize across the entire paper):
+  * "multi-channel" (always hyphenated; never "multichannel")
+  * "multi-microphone" (always hyphenated; never "multimicrophone")
+  * "time-frequency" (always hyphenated; never "time frequency" or "T-F")
+  * "real-valued" (always hyphenated)
+  * "complex-valued" (always hyphenated)
+  * "look-ahead" (always hyphenated; never "lookahead")
+  * "frame-level" / "frame-wise" (always hyphenated)
+
+3. MATHEMATICAL & LOGICAL RIGOR: DEFINE ESSENTIALS, AVOID PEDANTRY
+--------------------------------------------------------------------------------
+- Core Tenet: Perfect exactness and pure logic. Never state anything false, vague,
+  or mathematically ungrounded.
+- Define Domain-Specific Symbols & Spaces:
+  * Every specialized variable, parameter, set, indexing range, and domain-specific
+    operator must be clearly defined before (or immediately upon) its introduction.
+  * State the mathematical space for core quantities:
+    - Scalar: e.g., s_{k,t} \in \mathbb{C}, K_t \in \{0, 1, \dots, K_{\max}\}
+    - Vector: e.g., \mathbf{y}_t \in \mathbb{C}^{M \times 1}, \mathbf{z}_t \in \mathbb{R}^{2F \times 1}
+    - Matrix: e.g., \mathbf{R}_{y,t} \in \mathbb{C}^{M \times M}, \mathbf{A}_t \in \mathbb{C}^{M \times K_t}
+    - Tensor: e.g., \mathbf{Z} \in \mathbb{R}^{C \times D \times T}
+  * Standard operations like the imaginary unit \mathrm{i} = \sqrt{-1}, conjugate
+    transpose \{\cdot\}^{\mathrm{H}}, transpose \{\cdot\}^{\mathrm{T}}, expectation \mathbb{E}\{\cdot\},
+    and matrix rank \mathrm{rank}\{\cdot\} should be explicitly identified on first appearance.
+- Avoid Pedantic Over-Defining:
+  * Do NOT patronize the reader by stating obvious value ranges for every scalar parameter.
+  * Assume the reader is a mathematically literate researcher who understands standard
+    composite notation (e.g., the matrix exponent -\mathrm{H}/2, standard exponential decay,
+    and elementary trigonometric identities).
+  * Explicitly note "element-wise" application when applying scalar functions (log, cos, sin)
+    to vectors, and define matrix indexing notation [\mathbf{A}]_{i,j} on first appearance.
+
+4. COMPLETENESS, CONCISENESS & SMART REUSE ("EINDEUTIG" & STRAIGHT TO THE POINT)
+--------------------------------------------------------------------------------
+- Completeness ("Eindeutig"):
+  * Methodological and algorithmic descriptions must be fully specified down to the
+    necessary operational details.
+  * Leave zero gaps, ambiguities, or unanswered questions about what operations are performed,
+    how inputs are processed, or what dimensions result. Everything must be deterministic
+    and unambiguous.
+- Maximum Conciseness through Directness:
+  * Deliver explanations straight to the point. Write compactly without conversational
+    windups, filler words, or narrative detours.
+- Absolute Ban on Redundancy:
+  * NEVER define, explain, or motivate the exact same concept twice.
+  * If a concept, physical intuition, or parameter has already been introduced, do NOT
+    repeat its explanation in later paragraphs.
+- Smart Reuse via References (\Cref):
+  * When relying on an earlier model, equation, or parameter, point back directly
+    using \Cref{eq:...} or \Cref{sec:...} rather than re-explaining it in prose.
+  * Exception: If the original definition appeared much earlier in a distant section,
+    a single, very brief reminder clause is permissible to maintain reading flow,
+    but never a full re-derivation or repetition.
+
+5. OBJECTIVE DESCRIPTION VS. SELECTIVE MOTIVATION (THE "WHAT" VS. THE "WHY")
+--------------------------------------------------------------------------------
+- Primary Focus: Objective Description of "What Was Done":
+  * The main body of technical sections should objectively, clearly, and precisely describe
+    what was done so that any peer can reproduce the work.
+- Do NOT Over-Motivate Every Microscopic Detail:
+  * Avoid arguing, philosophizing, or justifying routine engineering choices and feature
+    representations (e.g., do not write lengthy defenses of why polar vs. Cartesian
+    coordinates were chosen for a feature vector).
+- Reserve the "Why" for the Big Picture & Core Hypotheses:
+  * Restrict explicit motivation to the overarching scientific narrative, central hypotheses,
+    and core physical principles (e.g., why spatial coherence relates to source count,
+    why temporal whitening reveals newly activating sources in a mixture).
+  * Motivate choices that will actually be substantiated, verified, and discussed in the
+    evaluation and experimental results.
+
+6. PUNCTUATION & SYNTAX RULES
+--------------------------------------------------------------------------------
+- STRICT BAN ON EM-DASHES:
+  * NEVER use em-dashes ("---") in text.
+  * Separate parenthetical or qualifying clauses naturally using commas, parentheses,
+    or distinct sentences.
+- Active & Precise Academic Style:
+  * Write in clear, direct, and grammatically complete sentences.
+  * Avoid colloquial phrasing, vague qualifiers ("somehow", "more or less"),
+    and excessive introductory fluff.
+
+7. MATHEMATICAL NOTATION & OPERATOR CONVENTIONS
+--------------------------------------------------------------------------------
+- Operator Bracing:
+  * Functional operators and matrix transformations ALWAYS take curly braces:
+    \bm{\Gamma}\{\cdot\}, \mathrm{diag}\{\cdot\}, \operatorname{gmsc}\{\cdot\},
+    \lambda_{\max}\{\cdot\}, \mathrm{rank}\{\cdot\}, \Re\{\cdot\}, \Im\{\cdot\},
+    \mathbb{E}\{\cdot\}, \log\{\cdot\}.
+- Matrix Square Roots:
+  * Explicitly define matrix square roots upon first use:
+    \mathbf{R}^{\nicefrac{\mathrm{H}}{2}} \mathbf{R}^{\nicefrac{1}{2}} = \mathbf{R} (e.g., Cholesky).
+- Unified Tensor Convention:
+  * All feature tensors follow the unified shape: C \times D \times T
+    where C = spatial channel or microphone pair dimension,
+          D = feature dimension,
+          T = sequence dimension (STFT time frames).
+
+8. LATEX FORMATTING & CROSS-REFERENCING
+--------------------------------------------------------------------------------
+- Mandatory Textual Referencing of All Visual & Structural Elements:
+  * EVERY table, figure, flowchart, diagram, algorithm, or structural overview
+    MUST be explicitly referenced and introduced in the running body text using \Cref{...}
+    (e.g., \Cref{tab:...}, \Cref{fig:...}, \Cref{alg:...}).
+  * Never leave "orphan" floats that exist without being referenced and contextualized
+    in the text.
+  * The reference must smoothly integrate into the surrounding discussion, pointing the
+    reader to the element and explaining its core purpose and takeaway.
+- Cross-Referencing via cleveref:
+  * ALWAYS use cleveref (\Cref{...}) for all internal cross-references:
+    - \Cref{sec:...} for sections and subsections
+    - \Cref{eq:...} for equations (renders automatically as (1), (2) in IEEE style)
+    - \Cref{tab:...} for tables
+    - \Cref{fig:...} for figures and flowcharts
+    - \Cref{alg:...} for algorithms and pseudocode
+- Tables:
+  * Use booktabs (\toprule, \midrule, \bottomrule) without vertical lines.
+  * Table descriptions and table cells must follow a consistent capitalization scheme
+    (capitalize the first letter of descriptive entries).
+- Acronyms:
+  * Register all technical abbreviations in the glossaries package (\newacronym).
+  * Use \gls{...} and \glspl{...} for automated expansion on first use.
+================================================================================
