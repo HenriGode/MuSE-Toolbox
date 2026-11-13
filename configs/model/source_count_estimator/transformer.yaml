@@ -1,8 +1,7 @@
 _target_: muse_toolbox.models.source_counting.estimators.transformer_estimator.TransformerEstimator
 _partial_: true
 max_sources: ${dataset.generation_config.max_sources}
-chunk_size: 7
-subsample: 1
+chunk_size: 7 # Number of past causal context frames (T_c)
 embed_dim: 128
 n_heads: 4
 ff_inner: 1024

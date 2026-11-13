@@ -71,7 +71,7 @@
 \newacronym{EBOP}{EBOP}{extended blind oblique projection}
 \newacronym[\glslongpluralkey=power spectral densities]{PSD}{PSD}{power spectral density}
 \newacronym{HA}{HA}{Hermitian angle}
-\newacronym{MHA}{MHA}{mean Hermitian angle}
+\newacronym{MHA}{MHA}{multi-head self-attention}
 \newacronym{WMHA}{WMHA}{weighted mean Hermitian angle}
 \newacronym{GMSC}{GMSC}{generalized magnitude-squared coherence}
 \newacronym{LTASS}{LTASS}{long-term average speech spectrum}
@@ -102,6 +102,12 @@
 \newacronym{CSIPD}{CSIPD}{cosine and sine inter-channel phase difference}
 \newacronym{PSC}{PSC}{pairwise spatial coherence}
 \newacronym{wGMSC}{wGMSC}{whitened generalized magnitude-squared coherence}
+\newacronym{LN}{LN}{layer normalization}
+\newacronym{FFN}{FFN}{feed-forward network}
+\newacronym{FiLM}{FiLM}{feature-wise linear modulation}
+\newacronym{ReLU}{ReLU}{rectified linear unit}
+\newacronym{PE}{PE}{positional encoding}
+\newacronym{TE}{TE}{Transformer Encoder}
 
 %-------------------------------------
 
@@ -111,6 +117,8 @@
 \newcommand{\crefrangeconjunction}{--}
 \crefformat{appsec}{Appendix #2#1#3} % ADD this line to define the appendix section format
 \usepackage{amssymb,mathtools,nicefrac,bm,booktabs}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, fit}
 
 %--------------------------------
 
@@ -261,11 +269,11 @@ Because the \gls{ATF} vectors $\mathbf{a}_k$ are assumed to be linearly independ
 where $\mathrm{rank}\{\cdot\}$ denotes the matrix rank operator.
 This fundamental algebraic relationship between source multiplicity and spatial covariance matrix rank provides the theoretical foundation for multi-channel spatial analysis and spatial coherence metrics.
 
-\subsection{Acoustic Sound Source Counting Framework}
+\subsection{Online Sound Source Counting Framework}
 \label{sec:problem_formulation}
-The core objective of this work is to estimate the instantaneous number of active sound sources $K_t$ at each time frame $t$ from the multi-channel acoustic observations. Formally, we define the sound source counting estimator $\mathcal{M}$ as a mapping from the multi-channel time-frequency observations to the estimated instantaneous source count $\widehat{K}_t$:
+The core objective of this work is to estimate the instantaneous number of active sound sources $K_t$ at each time frame $t$ from the multi-channel acoustic observations. Formally, we define the online sound source counting estimator $\mathcal{C}$ as a mapping from the multi-channel time-frequency observations to the estimated instantaneous source count $\widehat{K}_t$:
 \begin{align}
-  \widehat{K}_t = \mathcal{M}\left( \left\{ \mathbf{y}_{\tau, f} \right\}_{\tau=1, f=1}^{t, F} \right) \quad \forall t \in \{1, \ldots, T\}.
+  \widehat{K}_t = \mathcal{C}\left( \left\{ \mathbf{y}_{\tau, f} \right\}_{\tau=1, f=1}^{t, F} \right) \quad \forall t \in \{1, \ldots, T\}.
   \label{eq:strict_causality_definition}
 \end{align}
 To enable low-latency operation in real-time acoustic applications, we impose a strict \gls{STFT} frame-level causality constraint: the estimation at time frame $t$ is conditioned exclusively on current and past observations up to frame $t$ ($\tau \leq t$), with zero look-ahead into future frames ($\tau > t$). All neural network architectures evaluated in this work are designed to strictly comply with~\Cref{eq:strict_causality_definition}.
@@ -278,11 +286,53 @@ We formulate source counting as an integer classification problem with $(K_{\mat
 
 It is essential to distinguish the acoustic ground truth used in this paper from conventional text-driven linguistic alignments commonly found in the speech diarization literature. Traditional diarization and voice activity detection benchmarks often define ground-truth activity using linguistic forced-alignment tools (e.g., the Montreal Forced Aligner~\cite{mcauliffe2017montreal}), which label speech activity strictly based on phonetically transcribed text. Consequently, non-linguistic vocalizations (such as coughs, throat clearings, laughter, and heavy breathing) as well as non-speech acoustic sound events are labeled as inactive, even though substantial directional acoustic power impinges upon the microphone array. In contrast, in this work we define $K_t$ based on \emph{acoustic sound presence}: any sound source producing energy above an acoustic presence threshold relative to the background noise is classified as active, ensuring the model reflects the physical reality of the sound field.
 
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[
+      font=\footnotesize,
+      >=Latex,
+      block/.style={rectangle, draw=black, fill=blue!10, rounded corners=2pt, align=center, minimum height=2.2em, minimum width=3.4em, inner xsep=5pt, inner ysep=3pt},
+      feat_block/.style={rectangle, draw=black, fill=green!12, rounded corners=2pt, align=center, minimum height=2.2em, minimum width=5em, inner xsep=4pt, inner ysep=2pt},
+      geom_block/.style={rectangle, draw=black, dashed, fill=gray!12, rounded corners=2pt, align=center, minimum height=2.2em, minimum width=5em, inner xsep=4pt, inner ysep=2pt},
+      dnn_block/.style={rectangle, draw=black, fill=orange!20, rounded corners=2pt, align=center, minimum width=5em, inner sep=0pt},
+      line/.style={draw=black, ->, semithick},
+      opt_line/.style={draw=black, ->, semithick, dashed}
+    ]
+    % Nodes
+    \node (stft) [block] {\acrshort{STFT}};
+    \node (input) [above=0.45cm of stft] {$y_{m,l}$};
+    \node (spat) [feat_block, right=1.5cm of stft] {Spatial\\Features};
+    \node (spec) [feat_block, above=0.22cm of spat] {Spectral\\Features};
+    \node (geom) [geom_block, below=0.22cm of spat] {Array\\Geometry};
+    \coordinate (dnn_x) at ([xshift=1.45cm]spat.east);
+    \node (dnn) [dnn_block, fit={(spec.north -| dnn_x) (geom.south -| dnn_x)}] {};
+    \node [align=center, font=\footnotesize] at (dnn.center) {\acrshort{DNN}\\Architecture\\{\scriptsize(learnable)}};
+    \node (output) [right=0.55cm of dnn] {$\widehat{K}_t$};
+
+    % Connections
+    \draw [line] (input) -- (stft);
+    \coordinate (split) at ($(stft.east)!0.5!(spat.west)$);
+    \draw [semithick] (stft.east) -- node[above, font=\scriptsize] {$\mathbf{y}_{t,f}$} (split);
+    \draw [opt_line] (split) |- (spec.west);
+    \draw [opt_line] (split) -- (spat.west);
+
+    \draw [opt_line] (spec.east) -- (spec.east -| dnn.west);
+    \draw [opt_line] (spat.east) -- (spat.east -| dnn.west);
+    \draw [opt_line] (geom.east) -- (geom.east -| dnn.west);
+
+    \draw [line] (dnn.east) -- (output);
+  \end{tikzpicture}
+  \caption{General processing pipeline of the investigated online sound source counting estimator. Dashed paths indicate selectable feature branches (spectral features, spatial features, or their combination) and the optional conditioning with array geometry information.}
+  \label{fig:system_overview}
+\end{figure}
+
+\Cref{fig:system_overview} illustrates the general processing pipeline of the online sound source counting estimators investigated in this work. First, the discrete-time multi-microphone signals $y_{m,l}$ are transformed into the time-frequency domain via the \gls{STFT}, yielding the multi-channel observation vectors $\mathbf{y}_{t,f}$. From $\mathbf{y}_{t,f}$, either spectral features, spatial features, or a combination of both are extracted (\Cref{sec:feature_extraction}). Optionally, physical microphone array geometry information can be provided as an additional input. The selected features and optional array geometry information are fed into the core \gls{DNN} architecture (\Cref{sec:proposed_architecture}), which contains all learnable parameters of the system and outputs the frame-wise source count estimate $\widehat{K}_t$.
+
 
 \section{Feature Extraction}
 \label{sec:feature_extraction}
 
-The feature extraction front-end maps the multi-channel acoustic observations into real-valued representations that expose spectral cues (e.g., harmonicity and speech presence) and/or spatial cues (e.g., inter-channel phase differences and spatial coherence). In accordance with~\Cref{eq:strict_causality_definition}, all feature extractors evaluated in this work are strictly causal. Throughout this section, extracted feature tensors follow the unified shape convention
+As shown in~\Cref{fig:system_overview}, the feature extraction stage maps the multi-channel \gls{STFT} observations $\mathbf{y}_{t,f}$ into real-valued representations that expose spectral cues (e.g., harmonicity and speech presence) and/or spatial cues (e.g., inter-channel phase differences and spatial coherence). In accordance with~\Cref{eq:strict_causality_definition}, all feature extractors evaluated in this work are strictly causal. Throughout this section, extracted feature tensors follow the unified shape convention
 \begin{align}
   C \times D \times T,
   \label{eq:tensor_shape_convention}
@@ -336,9 +386,9 @@ Stacking across all $M$ microphones and $T$ time frames yields the real-valued f
 \label{sec:feat_logmel}
 As an alternative to raw spectral coefficients, Log-Mel filterbank energies provide a lower-dimensional representation of spectral envelopes and harmonicity that models the frequency resolution of the human auditory system. This serves as the primary spectral feature representation in Cornell et al.~\cite{cornell2022overlapped}.
 
-For microphone $m$ at time frame $t$, the short-time power spectrum is defined as the squared magnitude vector $\mathbf{p}_{m,t} = [|y_{m,t,1}|^2, \ldots, |y_{m,t,F}|^2]^{\mathrm{T}} \in \mathbb{R}_{+}^{F \times 1}$. To compress the linear frequency axis onto the Mel scale, a filterbank weighting matrix $\mathbf{W}_{\mathrm{mel}} \in \mathbb{R}_{+}^{D_{\mathrm{mel}} \times F}$ comprising $D_{\mathrm{mel}}$ overlapping triangular bandpass filters is applied. Subsequent logarithmic dynamic range compression yields the Log-Mel energy vector
+For microphone $m$ at time frame $t$, the short-time power spectrum is defined as the squared magnitude vector $\mathbf{p}_{y,m,t} = [|y_{m,t,1}|^2, \ldots, |y_{m,t,F}|^2]^{\mathrm{T}} \in \mathbb{R}_{+}^{F \times 1}$. To compress the linear frequency axis onto the Mel scale, a filterbank weighting matrix $\mathbf{W}_{\mathrm{mel}} \in \mathbb{R}_{+}^{D_{\mathrm{mel}} \times F}$ comprising $D_{\mathrm{mel}}$ overlapping triangular bandpass filters is applied. Subsequent logarithmic dynamic range compression yields the Log-Mel energy vector
 \begin{align}
-  \mathbf{z}_{m,t}^{(\mathrm{mel})} = \log\left\{ \mathbf{W}_{\mathrm{mel}} \mathbf{p}_{m,t} + \epsilon \right\} \in \mathbb{R}^{D_{\mathrm{mel}} \times 1},
+  \mathbf{z}_{m,t}^{(\mathrm{mel})} = \log\left\{ \mathbf{W}_{\mathrm{mel}} \mathbf{p}_{y,m,t} + \epsilon \right\} \in \mathbb{R}^{D_{\mathrm{mel}} \times 1},
   \label{eq:feat_logmel_vec}
 \end{align}
 where $\log\{\cdot\}$ is applied element-wise and $\epsilon > 0$ is a small constant ensuring numerical stability. Stacking across all $M$ microphones and $T$ time frames yields the multi-channel Log-Mel feature tensor:
@@ -366,10 +416,10 @@ where $\{\cdot\}^*$ denotes complex conjugation. Collecting the phase difference
 \end{align}
 Because the cyclic nature of phase values introduces artificial discontinuities around $\pm\pi$, the \gls{CSIPD} representation projects $\bm{\theta}_{p,t}$ onto the unit circle via trigonometric expansion~\cite{cornell2022overlapped}:
 \begin{align}
-  \mathbf{z}_{p,t}^{(\mathrm{CSIPD})} = \begin{bmatrix} \cos(\bm{\theta}_{p,t}) \\ \sin(\bm{\theta}_{p,t}) \end{bmatrix} \in [-1, 1]^{2F \times 1},
+  \mathbf{z}_{p,t}^{(\mathrm{CSIPD})} = \begin{bmatrix} \cos\{\bm{\theta}_{p,t}\} \\ \sin\{\bm{\theta}_{p,t}\} \end{bmatrix} \in [-1, 1]^{2F \times 1},
   \label{eq:feat_csipd_vec}
 \end{align}
-where $\cos(\cdot)$ and $\sin(\cdot)$ are applied element-wise. Beyond eliminating phase wrapping ambiguities, an essential property of \gls{CSIPD} features is that both the generalized cross-correlation with phase transform (GCC-PHAT) and the steered response power (SRP-PHAT) angular spectra can be represented as linear transformations of $\mathbf{z}_{p,t}^{(\mathrm{CSIPD})}$~\cite{cornell2022overlapped}. Consequently, downstream neural network layers can implicitly synthesize spatial steering responses without requiring explicit angular grid evaluations.
+where $\cos\{\cdot\}$ and $\sin\{\cdot\}$ are applied element-wise. Beyond eliminating phase wrapping ambiguities, an essential property of \gls{CSIPD} features is that both the generalized cross-correlation with phase transform (GCC-PHAT) and the steered response power (SRP-PHAT) angular spectra can be represented as linear transformations of $\mathbf{z}_{p,t}^{(\mathrm{CSIPD})}$~\cite{cornell2022overlapped}. Consequently, downstream neural network layers can implicitly synthesize spatial steering responses without requiring explicit angular grid evaluations.
 Stacking across all $P$ microphone pairs and $T$ time frames yields the spatial feature tensor
 \begin{align}
   \mathbf{Z}_{\mathrm{CSIPD}} \in \mathbb{R}^{P \times 2F \times T}.
@@ -402,9 +452,9 @@ where $\mathrm{diag}\{\cdot\}$ forms a diagonal matrix containing the diagonal e
   \Gamma_{p,t,f} = [\bm{\Gamma}\{\widehat{\mathbf{R}}_{y,t,f}\}]_{i,j} = \frac{[\widehat{\mathbf{R}}_{y,t,f}]_{i,j}}{\sqrt{[\widehat{\mathbf{R}}_{y,t,f}]_{i,i} [\widehat{\mathbf{R}}_{y,t,f}]_{j,j}}} \in \mathbb{C},
   \label{eq:feat_psc_scalar}
 \end{align}
-where $[\mathbf{A}]_{i,j}$ denotes the scalar entry in row $i$ and column $j$ of matrix $\mathbf{A}$, satisfying $|\Gamma_{p,t,f}| \le 1$, with phase angle $\psi_{p,t,f} = \arg\{\Gamma_{p,t,f}\} \in (-\pi, \pi]$. We represent $\Gamma_{p,t,f}$ in polar form by decomposing it into its magnitude $|\Gamma_{p,t,f}| \in [0, 1]$ and phase angle $\psi_{p,t,f}$, continuously mapping the phase angle onto the unit circle via cosine and sine functions to eliminate wrap-around discontinuities at $\pm\pi$. Concatenating magnitude, cosine phase, and sine phase across all $F$ frequency bins yields the polar feature vector
+where $[\cdot]_{i,j}$ denotes the scalar entry in row $i$ and column $j$ of a matrix, satisfying $|\Gamma_{p,t,f}| \le 1$, with phase angle $\psi_{p,t,f} = \arg\{\Gamma_{p,t,f}\} \in (-\pi, \pi]$. We represent $\Gamma_{p,t,f}$ in polar form by decomposing it into its magnitude $|\Gamma_{p,t,f}| \in [0, 1]$ and phase angle $\psi_{p,t,f}$, continuously mapping the phase angle onto the unit circle via cosine and sine functions to eliminate wrap-around discontinuities at $\pm\pi$. Concatenating magnitude, cosine phase, and sine phase across all $F$ frequency bins yields the polar feature vector
 \begin{align}
-  \mathbf{z}_{p,t}^{(\mathrm{PSC})} = \begin{bmatrix} |\bm{\gamma}_{p,t}| \\ \cos(\bm{\psi}_{p,t}) \\ \sin(\bm{\psi}_{p,t}) \end{bmatrix} \in \mathbb{R}^{3F \times 1},
+  \mathbf{z}_{p,t}^{(\mathrm{PSC})} = \begin{bmatrix} |\bm{\gamma}_{p,t}| \\ \cos\{\bm{\psi}_{p,t}\} \\ \sin\{\bm{\psi}_{p,t}\} \end{bmatrix} \in \mathbb{R}^{3F \times 1},
   \label{eq:feat_psc_vec}
 \end{align}
 where $|\bm{\gamma}_{p,t}| = [|\Gamma_{p,t,1}|, \dots, |\Gamma_{p,t,F}|]^{\mathrm{T}} \in [0, 1]^{F \times 1}$ and $\bm{\psi}_{p,t} = [\psi_{p,t,1}, \dots, \psi_{p,t,F}]^{\mathrm{T}} \in (-\pi, \pi]^{F \times 1}$, with trigonometric functions applied element-wise.
@@ -431,24 +481,24 @@ Evaluating~\Cref{eq:gmsc_operator} directly on the short-time spatial covariance
 \paragraph{Whitened GMSC (wGMSC)}
 Because mixtures of multiple concurrent sources exhibit low coherence similar to diffuse noise, standard \gls{GMSC} cannot detect source transitions in ongoing multi-source scenarios. To resolve this ambiguity, the \gls{wGMSC}~\cite{gode2026dnnbased} whitens the sound field with a reference covariance matrix containing the already active sources. This effectively converts all previously active sources into spatially white noise, such that any newly activating source acts as a single localized source against a white background, generating a prominent coherence peak:
 \begin{enumerate}
-  \item \textbf{Source Activation Feature}: To detect newly activating sources, $\widehat{\mathbf{R}}_{y,t,f}$ is whitened against a reference covariance matrix $\mathbf{R}_{v,t,f} = \widehat{\mathbf{R}}_{y,t-t_v,f}$ taken from a causal lookback window of $t_v$ frames:
+  \item \textbf{Source Activation Feature}: To detect newly activating sources, $\widehat{\mathbf{R}}_{y,t,f}$ is whitened against a reference covariance matrix $\mathbf{R}_{v,t,f} = \widehat{\mathbf{R}}_{y,t-T_v,f}$ taken from a causal lookback window of $T_v$ frames:
   \begin{align}
     \mathbf{R}_{w,t,f}^{(\mathrm{a})} = \mathbf{R}_{v,t,f}^{-\nicefrac{\mathrm{H}}{2}} \widehat{\mathbf{R}}_{y,t,f} \mathbf{R}_{v,t,f}^{-\nicefrac{1}{2}},
     \label{eq:whitening_act}
   \end{align}
   where the matrix square-root factor $\mathbf{R}_{v,t,f}^{\nicefrac{1}{2}}$ is defined such that $\mathbf{R}_{v,t,f}^{\nicefrac{\mathrm{H}}{2}}\mathbf{R}_{v,t,f}^{\nicefrac{1}{2}} = \mathbf{R}_{v,t,f}$ (e.g., Cholesky decomposition). Evaluating~\Cref{eq:gmsc_operator} yields the activation \gls{GMSC} $\gamma_{t,f}^{(\mathrm{a})} = \operatorname{gmsc}\{\mathbf{R}_{w,t,f}^{(\mathrm{a})}\} \in [0, 1]$. Stacking across frequency yields $\bm{\gamma}_{t}^{(\mathrm{a})} = [\gamma_{t,1}^{(\mathrm{a})}, \dots, \gamma_{t,F}^{(\mathrm{a})}]^{\mathrm{T}} \in [0, 1]^{F \times 1}$.
   
-  \item \textbf{Source Deactivation Feature}: To track sources ceasing activity while strictly maintaining causality, source deactivations are modeled as time-reversed activations~\cite{gode2026dnnbased}. In this formulation, the past covariance matrix contains the deactivated source, while the current covariance matrix does not. To avoid recursive tail leakage from the deactivated source into the current estimate, covariance matrices are estimated via a rectangular moving-average window of length $L_{\mathrm{ma}} \le t_v$:
+  \item \textbf{Source Deactivation Feature}: To track sources ceasing activity while strictly maintaining causality, source deactivations are modeled as time-reversed activations~\cite{gode2026dnnbased}. In this formulation, the past covariance matrix contains the deactivated source, while the current covariance matrix does not. To avoid recursive tail leakage from the deactivated source into the current estimate, covariance matrices are estimated via a rectangular moving-average window of length $T_{\mathrm{ma}} \le T_v$:
   \begin{align}
-    \widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})} = \frac{1}{L_{\mathrm{ma}}} \sum_{l=0}^{L_{\mathrm{ma}}-1} \mathbf{y}_{t-l,f} \mathbf{y}_{t-l,f}^{\mathrm{H}}.
+    \widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})} = \frac{1}{T_{\mathrm{ma}}} \sum_{\tau=0}^{T_{\mathrm{ma}}-1} \mathbf{y}_{t-\tau,f} \mathbf{y}_{t-\tau,f}^{\mathrm{H}}.
     \label{eq:cov_est_ma}
   \end{align}
   Whitening the past covariance matrix with the current covariance matrix yields:
   \begin{align}
-    \mathbf{R}_{w,t,f}^{(\mathrm{d})} = \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{\mathrm{H}}{2}} \widehat{\mathbf{R}}_{y,t-t_v,f}^{(\mathrm{ma})} \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{1}{2}}.
+    \mathbf{R}_{w,t,f}^{(\mathrm{d})} = \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{\mathrm{H}}{2}} \widehat{\mathbf{R}}_{y,t-T_v,f}^{(\mathrm{ma})} \left(\widehat{\mathbf{R}}_{y,t,f}^{(\mathrm{ma})}\right)^{-\nicefrac{1}{2}}.
     \label{eq:whitening_deact}
   \end{align}
-  The deactivation \gls{GMSC} is evaluated as $\gamma_{t,f}^{(\mathrm{d})} = \operatorname{gmsc}\{\mathbf{R}_{w,t,f}^{(\mathrm{d})}\} \in [0, 1]$, yielding the deactivation vector $\bm{\gamma}_{t}^{(\mathrm{d})} = [\gamma_{t,1}^{(\mathrm{d})}, \dots, \gamma_{t,F}^{(\mathrm{d})}]^{\mathrm{T}} \in [0, 1]^{F \times 1}$. Because this deactivation feature relies strictly on observations $\tau \le t$, causality is preserved, with an inherent processing delay of $t_v$ frames after a deactivation occurs.
+  The deactivation \gls{GMSC} is evaluated as $\gamma_{t,f}^{(\mathrm{d})} = \operatorname{gmsc}\{\mathbf{R}_{w,t,f}^{(\mathrm{d})}\} \in [0, 1]$, yielding the deactivation vector $\bm{\gamma}_{t}^{(\mathrm{d})} = [\gamma_{t,1}^{(\mathrm{d})}, \dots, \gamma_{t,F}^{(\mathrm{d})}]^{\mathrm{T}} \in [0, 1]^{F \times 1}$. Because this deactivation feature relies strictly on observations $\tau \le t$, causality is preserved, with an inherent processing delay of $T_v$ frames after a deactivation occurs.
 \end{enumerate}
 Concatenating the activation and deactivation feature vectors yields the bidirectional \gls{wGMSC} feature vector:
 \begin{align}
@@ -467,10 +517,360 @@ respectively.
 
 
 \section{Proposed Architecture / Model Design / Method}
+\label{sec:proposed_architecture}
 % The core technical contribution section (Phase 1, 2, and 3 of your project plan).
+In this section, we describe the core \gls{DNN} architecture shown in~\Cref{fig:system_overview}, which contains all learnable parameters of the online sound source counting estimator and maps the selected spectral and/or spatial features, together with the optional array geometry information, to the frame-wise source count estimate $\widehat{K}_t$.
 
-\subsection{Strictly Causal Transformer Base}
-% Describe the Transformer blocks. Explain the strict causality constraint: how the "cat-pool" operation is modified to only concatenate *past* frames, ensuring zero look-ahead.
+\subsection{Strictly Causal Single-Stream Transformer Architecture}
+\label{sec:causal_transformer_base}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\footnotesize,
+      >=Latex,
+      block/.style={rectangle, draw=black, fill=blue!10, rounded corners=2pt, align=center, minimum height=2.2em, inner xsep=5pt, inner ysep=3pt},
+      norm_block/.style={rectangle, draw=black, fill=orange!20, rounded corners=2pt, align=center, minimum height=1.9em, inner xsep=4pt, inner ysep=2pt},
+      conv_block/.style={rectangle, draw=black, fill=green!15, rounded corners=2pt, align=center, minimum height=2.0em, inner xsep=4pt, inner ysep=2pt},
+      te_block/.style={rectangle, draw=black, fill=yellow!25, rounded corners=3pt, align=center, minimum height=2.6em, minimum width=4.8em, inner xsep=5pt, inner ysep=3pt},
+      out_block/.style={rectangle, draw=black, fill=purple!12, rounded corners=2pt, align=center, minimum height=2.0em, inner xsep=4pt, inner ysep=2pt},
+      sum_node/.style={circle, draw=black, fill=white, inner sep=1pt, minimum size=1.2em},
+      lbl/.style={above, font=\scriptsize, inner ysep=2.5pt},
+      line/.style={draw=black, ->, semithick}
+    ]
+    % Main top pipeline
+    \node (in) {$\mathbf{Z}$};
+    \node (ctx) [block, right=0.38cm of in] {Causal\\Context};
+    \node (ln0) [norm_block, right=0.50cm of ctx] {\acrshort{LN}};
+    \node (conv_in) [conv_block, right=0.40cm of ln0] {Conv $1\times 1$};
+    \node (sum_pe) [sum_node, right=0.40cm of conv_in] {$+$};
+    \node (pe) [block, above=0.45cm of sum_pe] {Sinusoidal \acrshort{PE}};
+
+    \node (te1) [te_block, right=0.72cm of sum_pe] {\acrshort{TE} Block\\($r=1$)};
+    \node (dots) [right=0.25cm of te1, font=\normalsize] {$\cdots$};
+    \node (teR) [te_block, right=0.25cm of dots] {\acrshort{TE} Block\\($r=R$)};
+
+    \node (conv_out) [conv_block, right=0.72cm of teR] {Conv $1\times 1$};
+    \node (softmax) [out_block, right=0.55cm of conv_out] {Softmax};
+    \node (argmax) [out_block, right=0.45cm of softmax] {$\argmax$};
+    \node (out) [right=0.38cm of argmax] {$\widehat{K}_t$};
+
+    % Connections in main pipeline
+    \draw [line] (in) -- (ctx);
+    \draw [line] (ctx) -- node[lbl] {$\widetilde{\mathbf{Z}}$} (ln0);
+    \draw [line] (ln0) -- (conv_in);
+    \draw [line] (conv_in) -- (sum_pe);
+    \draw [line] (pe) -- node[right, font=\scriptsize, inner xsep=2.5pt] {$\mathbf{P}_{\mathrm{PE}}$} (sum_pe);
+    \draw [line] (sum_pe) -- node[lbl] {$\mathbf{H}^{(0)}$} (te1);
+    \draw [line] (te1) -- (dots);
+    \draw [line] (dots) -- (teR);
+    \draw [line] (teR) -- node[lbl] {$\mathbf{H}^{(R)}$} (conv_out);
+    \draw [line] (conv_out) -- node[lbl] {$\mathbf{L}$} (softmax);
+    \draw [line] (softmax) -- node[lbl] {$\widehat{\mathbf{P}}$} (argmax);
+    \draw [line] (argmax) -- (out);
+
+    % Detailed Transformer Encoder Block callout below
+    \node (te_in) [below=1.75cm of ctx] {$\mathbf{H}^{(r-1)}$};
+    \coordinate (split1) at ([xshift=0.45cm]te_in.east);
+    \node (ln1) [norm_block, right=0.8cm of te_in] {\acrshort{LN}};
+    \node (mha) [block, fill=yellow!20, right=0.5cm of ln1] {Causal \acrshort{MHA}};
+    \node (sum1) [sum_node, right=0.5cm of mha] {$+$};
+
+    \coordinate (split2) at ([xshift=0.95cm]sum1.east);
+    \node (ln2) [norm_block, right=1.3cm of sum1] {\acrshort{LN}};
+    \node (ff1) [conv_block, right=0.5cm of ln2] {Conv $1\times 1$};
+    \node (relu) [norm_block, fill=red!12, right=0.5cm of ff1] {\acrshort{ReLU}};
+    \node (ff2) [conv_block, right=0.5cm of relu] {Conv $1\times 1$};
+    \node (sum2) [sum_node, right=0.5cm of ff2] {$+$};
+    \node (te_out) [right=0.6cm of sum2] {$\mathbf{H}^{(r)}$};
+
+    % Sub-block lines
+    \draw [line] (te_in) -- (ln1);
+    \draw [line] (ln1) -- (mha);
+    \draw [line] (mha) -- (sum1);
+    \draw [line] (split1) -- ++(0,-0.65cm) -| (sum1.south);
+
+    \draw [line] (sum1) -- node[lbl, pos=0.42] {$\widetilde{\mathbf{H}}^{(r)}$} (ln2);
+    \draw [line] (ln2) -- (ff1);
+    \draw [line] (ff1) -- (relu);
+    \draw [line] (relu) -- (ff2);
+    \draw [line] (ff2) -- (sum2);
+    \draw [line] (split2) -- ++(0,-0.65cm) -| (sum2.south);
+    \draw [line] (sum2) -- (te_out);
+
+    % Dashed FFN box
+    \node (ffn_box) [draw=black!60, dashed, rounded corners=2pt, inner sep=4pt, fit={(ff1) (relu) (ff2)}, label={[font=\scriptsize, anchor=south]above:Position-Wise \acrshort{FFN}}] {};
+
+    % Outer box for Transformer Encoder Block detail
+    \coordinate (box_nw) at ([xshift=-0.2cm, yshift=0.45cm]split1 |- ffn_box.north);
+    \coordinate (box_se) at ([xshift=0.2cm, yshift=-0.8cm]sum2.east |- sum2.center);
+    \node (detail_box) [draw=black, rounded corners=3pt, fill=yellow!8, fill opacity=0.25, fit={(box_nw) (box_se)}, label={[font=\footnotesize\bfseries, anchor=south, yshift=1pt]north:\acrshort{TE} Block ($r$-th Layer)}] {};
+
+    % Dashed zoom lines from te1/teR to detail_box
+    \draw [dashed, draw=black!50] (te1.south west) -- (detail_box.north west);
+    \draw [dashed, draw=black!50] (teR.south east) -- (detail_box.north east);
+  \end{tikzpicture}%
+  }
+  \caption{Block diagram of the strictly causal single-stream Transformer architecture adapted from~\cite{cornell2022overlapped}, where \acrshort{TE} denotes Transformer Encoder. Top: complete frame-wise processing pipeline from the input feature matrix $\mathbf{Z} \in \mathbb{R}^{D \times T}$ to the sound source count estimate $\widehat{K}_t$ at the native \acrshort{STFT} frame resolution. Bottom: internal structure of the $r$-th Pre-\acrshort{LN} \acrshort{TE} block comprising a strictly causal \acrshort{MHA} residual sub-block and a position-wise \acrshort{FFN} residual sub-block.}
+  \label{fig:transformer_architecture}
+\end{figure*}
+
+Our baseline neural network builds upon the Transformer architecture introduced by Cornell et al.~\cite{cornell2022overlapped}, which we adapt into a strictly causal online estimator in compliance with~\Cref{eq:strict_causality_definition}. We first formulate the architecture for a single-stream input representation ($C = 1$ in~\Cref{eq:tensor_shape_convention}), corresponding either to spectral features extracted from a single reference microphone (e.g., $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$) or to a single-stream spatial representation. Let
+\begin{align}
+  \mathbf{Z} = \begin{bmatrix} \mathbf{z}_1 & \mathbf{z}_2 & \cdots & \mathbf{z}_T \end{bmatrix} \in \mathbb{R}^{D \times T}
+  \label{eq:single_stream_input}
+\end{align}
+denote the input feature matrix over $T$ \gls{STFT} time frames, where $\mathbf{z}_t \in \mathbb{R}^{D \times 1}$ is the feature vector at time frame $t \in \{1, \dots, T\}$. As illustrated in~\Cref{fig:transformer_architecture}, the single-stream Transformer architecture processes $\mathbf{Z}$ strictly frame-wise at the native \gls{STFT} resolution $T$ through four sequential stages: causal context concatenation, bottleneck projection with sinusoidal \gls{PE}, a stack of $R$ Pre-\gls{LN} \gls{TE} blocks, and a classification output stage.
+
+\subsubsection{Causal Context Concatenation}
+\label{sec:causal_context}
+To transfer local temporal context into the feature dimension, Cornell et al.~\cite{cornell2022overlapped} employed a bidirectional concatenate-subsample (cat-pool) front-end that concatenated both past and future frames around each time frame $t$ and subsampled the temporal axis to reduce the quadratic $\mathcal{O}(T^2)$ complexity of self-attention. In contrast, our online estimator operates strictly frame-wise at the native \gls{STFT} frame rate $T$ without temporal subsampling, thereby avoiding quantization delays and guaranteeing an immediate frame-wise response while restricting the context window exclusively to past frames ($\tau \le t$).
+
+Given a causal past-context length $T_{\mathrm{c}} \in \mathbb{N}_0$, each current feature vector $\mathbf{z}_t$ at time frame $t \in \{1, \dots, T\}$ is stacked with its $T_{\mathrm{c}}$ preceding feature vectors:
+\begin{align}
+  \tilde{\mathbf{z}}_t = \begin{bmatrix} \mathbf{z}_{t - T_{\mathrm{c}}}^{\mathrm{T}} & \cdots & \mathbf{z}_{t-1}^{\mathrm{T}} & \mathbf{z}_t^{\mathrm{T}} \end{bmatrix}^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{cat}} \times 1},
+  \label{eq:causal_cat}
+\end{align}
+where $D_{\mathrm{cat}} = (T_{\mathrm{c}} + 1) D$ denotes the concatenated feature dimension, boundary frames with $\tau \le 0$ are zero-padded as $\mathbf{z}_{\tau} = \mathbf{0}_{D \times 1}$, and collecting all $T$ frames forms $\widetilde{\mathbf{Z}} = \begin{bmatrix} \tilde{\mathbf{z}}_1 & \cdots & \tilde{\mathbf{z}}_T \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{cat}} \times T}$. Setting $T_{\mathrm{c}} = 0$ disables context stacking ($D_{\mathrm{cat}} = D$ and $\widetilde{\mathbf{Z}} = \mathbf{Z}$).
+
+\subsubsection{Input Normalization, Bottleneck Projection, and Positional Encoding}
+\label{sec:bottleneck_pe}
+Following causal context concatenation, each vector $\tilde{\mathbf{z}}_t$ is normalized across its feature dimension via \gls{LN}~\cite{ba2016layer}. For an arbitrary vector $\mathbf{v} \in \mathbb{R}^{D_{\mathbf{v}} \times 1}$ with $d$-th scalar entry $[\mathbf{v}]_d$, the \gls{LN} operator is defined as
+\begin{align}
+  \mathrm{LN}\{\mathbf{v}\} = \bm{\gamma}_{\mathrm{LN}} \odot \frac{\mathbf{v} - \mu_{\mathbf{v}} \mathbf{1}_{D_{\mathbf{v}}}}{\sqrt{\sigma_{\mathbf{v}}^2 + \epsilon_{\mathrm{LN}}}} + \bm{\beta}_{\mathrm{LN}} \in \mathbb{R}^{D_{\mathbf{v}} \times 1},
+  \label{eq:layernorm_def}
+\end{align}
+where $\mu_{\mathbf{v}} = \frac{1}{D_{\mathbf{v}}}\sum_{d=1}^{D_{\mathbf{v}}} [\mathbf{v}]_d$ and $\sigma_{\mathbf{v}}^2 = \frac{1}{D_{\mathbf{v}}}\sum_{d=1}^{D_{\mathbf{v}}} ([\mathbf{v}]_d - \mu_{\mathbf{v}})^2$ denote the sample mean and variance across the $D_{\mathbf{v}}$ feature entries, $\mathbf{1}_{D_{\mathbf{v}}} \in \mathbb{R}^{D_{\mathbf{v}} \times 1}$ is the all-ones vector, $\bm{\gamma}_{\mathrm{LN}}, \bm{\beta}_{\mathrm{LN}} \in \mathbb{R}^{D_{\mathbf{v}} \times 1}$ are learnable affine gain and bias parameters, $\epsilon_{\mathrm{LN}} > 0$ is a small constant for numerical stability, and $\odot$ denotes the element-wise Hadamard product.
+
+Subsequently, a bottleneck point-wise ($1 \times 1$) convolution maps the normalized $D_{\mathrm{cat}}$-dimensional vector at each time frame $t$ to a compact model embedding dimension $D_{\mathrm{emb}}$:
+\begin{align}
+  \mathbf{h}_t^{(0,\mathrm{in})} = \mathbf{W}_{\mathrm{in}} \, \mathrm{LN}\{\tilde{\mathbf{z}}_t\} + \mathbf{b}_{\mathrm{in}} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1},
+  \label{eq:bottleneck_conv}
+\end{align}
+with learnable weight matrix $\mathbf{W}_{\mathrm{in}} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{cat}}}$ and bias vector $\mathbf{b}_{\mathrm{in}} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$. Because self-attention does not inherently encode sequential order, deterministic sinusoidal \gls{PE} vectors $\mathbf{p}_t^{(\mathrm{PE})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$~\cite{vaswani2017attention} are added to the bottleneck embeddings:
+\begin{align}
+  \mathbf{h}_t^{(0)} = \mathbf{h}_t^{(0,\mathrm{in})} + \mathbf{p}_t^{(\mathrm{PE})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \quad \forall t \in \{1, \dots, T\},
+  \label{eq:pos_enc_add}
+\end{align}
+where the entries of $\mathbf{p}_t^{(\mathrm{PE})}$ for dimension index $d \in \{0, 1, \dots, D_{\mathrm{emb}}/2 - 1\}$ are given by
+\begin{align}
+  \left[\mathbf{p}_t^{(\mathrm{PE})}\right]_{2d+1} &= \sin\!\left\{ \frac{t - 1}{10000^{\nicefrac{2d}{D_{\mathrm{emb}}}}} \right\}, \label{eq:pe_sin} \\
+  \left[\mathbf{p}_t^{(\mathrm{PE})}\right]_{2d+2} &= \cos\!\left\{ \frac{t - 1}{10000^{\nicefrac{2d}{D_{\mathrm{emb}}}}} \right\}. \label{eq:pe_cos}
+\end{align}
+Collecting the vectors $\mathbf{p}_t^{(\mathrm{PE})}$ and $\mathbf{h}_t^{(0)}$ across all $T$ frames yields the positional encoding matrix $\mathbf{P}_{\mathrm{PE}} = \begin{bmatrix} \mathbf{p}_1^{(\mathrm{PE})} & \cdots & \mathbf{p}_T^{(\mathrm{PE})} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$ and the initial embedding matrix $\mathbf{H}^{(0)} = \begin{bmatrix} \mathbf{h}_1^{(0)} & \cdots & \mathbf{h}_T^{(0)} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$.
+
+\subsubsection{Pre-LN Transformer Encoder Blocks}
+\label{sec:transformer_encoder_blocks}
+The embedding matrix $\mathbf{H}^{(0)}$ is processed by a stack of $R$ identical \gls{TE} blocks. Following~\cite{cornell2022overlapped,nguyen2019transformers}, each block $r \in \{1, \dots, R\}$ adopts a Pre-\gls{LN} residual configuration, in which \gls{LN} is applied at the input of each residual branch rather than after the residual addition to improve gradient flow and training stability. As shown in the bottom panel of~\Cref{fig:transformer_architecture}, the $r$-th block maps $\mathbf{H}^{(r-1)} = \begin{bmatrix} \mathbf{h}_1^{(r-1)} & \cdots & \mathbf{h}_T^{(r-1)} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$ to $\mathbf{H}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$ via two sequential sub-blocks:
+
+\paragraph{Strictly Causal Multi-Head Self-Attention Sub-Block}
+First, frame-wise \gls{LN} is applied to $\mathbf{H}^{(r-1)}$, yielding $\bar{\mathbf{H}}^{(r-1)} = \begin{bmatrix} \mathrm{LN}\{\mathbf{h}_1^{(r-1)}\} & \cdots & \mathrm{LN}\{\mathbf{h}_T^{(r-1)}\} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$. The \gls{MHA} layer partitions the $D_{\mathrm{emb}}$-dimensional embedding space into $N_{\mathrm{head}}$ parallel attention heads of dimension $D_{\mathrm{head}} = D_{\mathrm{emb}} / N_{\mathrm{head}}$. For each attention head $h \in \{1, \dots, N_{\mathrm{head}}\}$, the normalized sequence $\bar{\mathbf{H}}^{(r-1)}$ is linearly projected into query, key, and value matrices:
+\begin{align}
+  \mathbf{Q}_h^{(r)} &= \mathbf{W}_{Q,h}^{(r)} \bar{\mathbf{H}}^{(r-1)} + \mathbf{b}_{Q,h}^{(r)} \mathbf{1}_T^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{head}} \times T}, \label{eq:mha_q} \\
+  \mathbf{K}_h^{(r)} &= \mathbf{W}_{K,h}^{(r)} \bar{\mathbf{H}}^{(r-1)} + \mathbf{b}_{K,h}^{(r)} \mathbf{1}_T^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{head}} \times T}, \label{eq:mha_k} \\
+  \mathbf{V}_h^{(r)} &= \mathbf{W}_{V,h}^{(r)} \bar{\mathbf{H}}^{(r-1)} + \mathbf{b}_{V,h}^{(r)} \mathbf{1}_T^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{head}} \times T}, \label{eq:mha_v}
+\end{align}
+where $\mathbf{W}_{Q,h}^{(r)}, \mathbf{W}_{K,h}^{(r)}, \mathbf{W}_{V,h}^{(r)} \in \mathbb{R}^{D_{\mathrm{head}} \times D_{\mathrm{emb}}}$ and $\mathbf{b}_{Q,h}^{(r)}, \mathbf{b}_{K,h}^{(r)}, \mathbf{b}_{V,h}^{(r)} \in \mathbb{R}^{D_{\mathrm{head}} \times 1}$ are learnable parameters.
+
+Whereas the offline formulation in~\cite{cornell2022overlapped} attends across all frames in a segment simultaneously, online sound source counting requires that the query at time frame $t$ attends exclusively to key and value vectors from current and past frames $\tau \le t$. We enforce this constraint via an upper-triangular causal mask matrix $\mathbf{M}_{\mathrm{causal}} \in \{0, -\infty\}^{T \times T}$ with entries
+\begin{align}
+  [\mathbf{M}_{\mathrm{causal}}]_{\tau, t} =
+  \begin{cases}
+    0, & \text{if } \tau \le t, \\
+    -\infty, & \text{if } \tau > t.
+  \end{cases}
+  \label{eq:causal_mask}
+\end{align}
+The masked scaled dot-product score matrix for head $h$ is computed as
+\begin{align}
+  \mathbf{S}_h^{(r)} = \frac{\left(\mathbf{K}_h^{(r)}\right)^{\mathrm{T}} \mathbf{Q}_h^{(r)}}{\sqrt{D_{\mathrm{head}}}} + \mathbf{M}_{\mathrm{causal}} \in \mathbb{R}^{T \times T}.
+  \label{eq:attention_scores}
+\end{align}
+Applying the softmax function along each column $t$ of $\mathbf{S}_h^{(r)}$ yields the causal attention weight matrix $\mathbf{A}_h^{(r)} \in [0, 1]^{T \times T}$, whose $(\tau, t)$-th entry is
+\begin{align}
+  [\mathbf{A}_h^{(r)}]_{\tau, t} =
+  \begin{cases}
+    \dfrac{\exp\!\left\{ [\mathbf{S}_h^{(r)}]_{\tau, t} \right\}}{\sum_{\nu=1}^t \exp\!\left\{ [\mathbf{S}_h^{(r)}]_{\nu, t} \right\}}, & \text{if } \tau \le t, \\[12pt]
+    0, & \text{if } \tau > t,
+  \end{cases}
+  \label{eq:causal_attention_weights}
+\end{align}
+ensuring zero information leakage from future frames $\tau > t$. Multiplying the value matrix $\mathbf{V}_h^{(r)}$ with $\mathbf{A}_h^{(r)}$ produces the head output $\mathbf{O}_h^{(r)} = \mathbf{V}_h^{(r)} \mathbf{A}_h^{(r)} \in \mathbb{R}^{D_{\mathrm{head}} \times T}$. Concatenating the outputs of all $N_{\mathrm{head}}$ heads along the feature dimension and applying an output projection with a residual connection yields the intermediate representation $\widetilde{\mathbf{H}}^{(r)} = \begin{bmatrix} \tilde{\mathbf{h}}_1^{(r)} & \cdots & \tilde{\mathbf{h}}_T^{(r)} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$:
+\begin{align}
+  \widetilde{\mathbf{H}}^{(r)} = \mathbf{H}^{(r-1)} + \mathbf{W}_O^{(r)}
+  \begin{bmatrix}
+    \mathbf{O}_1^{(r)} \\
+    \vdots \\
+    \mathbf{O}_{N_{\mathrm{head}}}^{(r)}
+  \end{bmatrix}
+  + \mathbf{b}_O^{(r)} \mathbf{1}_T^{\mathrm{T}},
+  \label{eq:mha_residual}
+\end{align}
+where $\mathbf{W}_O^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{emb}}}$ and $\mathbf{b}_O^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$.
+
+\paragraph{Position-Wise Feed-Forward Sub-Block}
+In the second residual sub-block, each column $\tilde{\mathbf{h}}_t^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ of $\widetilde{\mathbf{H}}^{(r)}$ is normalized via \gls{LN} and passed through a two-layer position-wise \gls{FFN} consisting of two point-wise ($1 \times 1$) convolutions separated by a \gls{ReLU} activation function, yielding $\mathbf{h}_t^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$:
+\begin{align}
+  \mathbf{h}_t^{(r)} = \tilde{\mathbf{h}}_t^{(r)} + \mathbf{W}_2^{(r)} \mathrm{ReLU}\!\left\{ \mathbf{W}_1^{(r)} \mathrm{LN}\!\left\{\tilde{\mathbf{h}}_t^{(r)}\right\} + \mathbf{b}_1^{(r)} \right\} + \mathbf{b}_2^{(r)},
+  \label{eq:ffn_residual}
+\end{align}
+where $\mathbf{W}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times D_{\mathrm{emb}}}$ and $\mathbf{b}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times 1}$ expand the representation to an inner hidden dimension $D_{\mathrm{FFN}}$, $\mathrm{ReLU}\{x\} = \max(0, x)$ is applied element-wise, and $\mathbf{W}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{FFN}}}$ and $\mathbf{b}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ project the representation back to dimension $D_{\mathrm{emb}}$. During training, dropout regularization is applied after the sinusoidal \gls{PE}, after the \gls{MHA} output projection, and after the \gls{ReLU} activation as well as the second point-wise convolution in the \gls{FFN}.
+
+\subsubsection{Output Projection and Classification}
+\label{sec:output_stage}
+After the $R$-th \gls{TE} block, a final point-wise ($1 \times 1$) convolution maps each $D_{\mathrm{emb}}$-dimensional vector $\mathbf{h}_t^{(R)}$ directly at the native \gls{STFT} frame resolution $T$ to a vector of $(K_{\mathrm{max}} + 1)$ unnormalized class logits:
+\begin{align}
+  \bm{\ell}_t = \mathbf{W}_{\mathrm{out}} \mathbf{h}_t^{(R)} + \mathbf{b}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times 1}, \quad \forall t \in \{1, \dots, T\},
+  \label{eq:output_conv}
+\end{align}
+with $\mathbf{W}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times D_{\mathrm{emb}}}$ and $\mathbf{b}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times 1}$, forming the full-resolution logit matrix $\mathbf{L} = \begin{bmatrix} \bm{\ell}_1 & \cdots & \bm{\ell}_T \end{bmatrix} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times T}$. Applying the softmax operator to $\bm{\ell}_t$ yields the estimated frame-wise posterior probability vector $\widehat{\mathbf{p}}_t \in [0, 1]^{(K_{\mathrm{max}} + 1) \times 1}$:
+\begin{align}
+  \widehat{\mathbf{p}}_t = \mathrm{softmax}\{\bm{\ell}_t\} = \begin{bmatrix} \widehat{p}_{0,t} & \widehat{p}_{1,t} & \cdots & \widehat{p}_{K_{\mathrm{max}},t} \end{bmatrix}^{\mathrm{T}},
+  \label{eq:softmax_posteriors}
+\end{align}
+stacked as $\widehat{\mathbf{P}} = \begin{bmatrix} \widehat{\mathbf{p}}_1 & \cdots & \widehat{\mathbf{p}}_T \end{bmatrix} \in [0, 1]^{(K_{\mathrm{max}} + 1) \times T}$, where the estimated posterior probability of $k \in \{0, 1, \dots, K_{\mathrm{max}}\}$ active sound sources at time frame $t$ is
+\begin{align}
+  \widehat{p}_{k,t} = \frac{\exp\{[\bm{\ell}_t]_{k+1}\}}{\sum_{\kappa=0}^{K_{\mathrm{max}}} \exp\{[\bm{\ell}_t]_{\kappa+1}\}}.
+  \label{eq:class_posterior_k}
+\end{align}
+Finally, the frame-wise source count estimate $\widehat{K}_t$ is obtained as the class index maximizing the posterior probability:
+\begin{align}
+  \widehat{K}_t = \argmax_{k \in \{0, 1, \dots, K_{\mathrm{max}}\}} \widehat{p}_{k,t}.
+  \label{eq:argmax_source_count}
+\end{align}
+
+
+\subsection{Early and Late Feature Fusion}
+\label{sec:feature_fusion}
+
+\begin{figure*}[t]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\footnotesize,
+      >=Latex,
+      block/.style={rectangle, draw=black, fill=blue!10, rounded corners=2pt, align=center, minimum height=2.0em, inner xsep=4pt, inner ysep=2pt},
+      norm_block/.style={rectangle, draw=black, fill=orange!20, rounded corners=2pt, align=center, minimum height=1.8em, inner xsep=4pt, inner ysep=2pt},
+      conv_block/.style={rectangle, draw=black, fill=green!15, rounded corners=2pt, align=center, minimum height=1.9em, inner xsep=4pt, inner ysep=2pt},
+      film_block/.style={rectangle, draw=black, fill=green!25, rounded corners=2pt, align=center, minimum height=2.0em, inner xsep=4pt, inner ysep=2pt},
+      te_block/.style={rectangle, draw=black, fill=yellow!25, rounded corners=3pt, align=center, minimum height=2.5em, inner xsep=5pt, inner ysep=3pt},
+      lbl/.style={above, font=\scriptsize, inner ysep=2.5pt},
+      line/.style={draw=black, ->, semithick}
+    ]
+    % =========================================================
+    % (a) Early Fusion (Left Panel)
+    % =========================================================
+    \node (spec_a) {$\mathbf{Z}_{\mathrm{spec}}$};
+    \node (spat_a) [below=1.0cm of spec_a] {$\mathbf{Z}_{\mathrm{spat}}$};
+
+    \node (cp_spec_a) [block, right=0.38cm of spec_a] {Causal\\Context};
+    \node (cp_spat_a) [block, right=0.38cm of spat_a] {Causal\\Context};
+
+    \node (ln_spec_a) [norm_block, right=0.38cm of cp_spec_a] {\acrshort{LN}};
+    \node (ln_spat_a) [norm_block, right=0.38cm of cp_spat_a] {\acrshort{LN}};
+
+    \coordinate (mid_a) at ($(ln_spec_a.east)!0.5!(ln_spat_a.east)$);
+    \node (cat_a) [block, fill=gray!18, right=0.72cm of mid_a, minimum height=4.0em] {Concat};
+    \node (conv_a) [conv_block, right=0.45cm of cat_a] {Conv $1\times 1$};
+    \node (out_a) [right=0.95cm of conv_a, align=center] {Sinusoidal \acrshort{PE}\\$\&$ \acrshort{TE} Blocks};
+
+    \draw [line] (spec_a) -- (cp_spec_a);
+    \draw [line] (spat_a) -- (cp_spat_a);
+    \draw [line] (cp_spec_a) -- (ln_spec_a);
+    \draw [line] (cp_spat_a) -- (ln_spat_a);
+    \draw [line] (ln_spec_a.east) -- node[lbl] {$\bar{\mathbf{Z}}_{\mathrm{spec}}$} (ln_spec_a.east -| cat_a.west);
+    \draw [line] (ln_spat_a.east) -- node[below, font=\scriptsize, inner ysep=2.5pt] {$\bar{\mathbf{Z}}_{\mathrm{spat}}$} (ln_spat_a.east -| cat_a.west);
+    \draw [line] (cat_a) -- (conv_a);
+    \draw [line] (conv_a) -- node[lbl] {$\mathbf{H}^{(0,\mathrm{in})}$} (out_a);
+
+    \node (label_a) [font=\footnotesize\bfseries, below=0.55cm of cat_a.south] {(a) Early Fusion (Input Concatenation)};
+
+    % =========================================================
+    % (b) Late Fusion via FiLM (Right Panel)
+    % =========================================================
+    \node (in_b) [right=0.9cm of out_a, yshift=0.55cm] {$\mathbf{H}^{(0)}$};
+    \node (film1) [film_block, right=0.48cm of in_b] {\acrshort{FiLM}};
+    \node (te1_b) [te_block, right=0.42cm of film1] {\acrshort{TE} Block\\($r=1$)};
+    \node (film2) [film_block, right=0.68cm of te1_b] {\acrshort{FiLM}};
+    \node (te2_b) [te_block, right=0.42cm of film2] {\acrshort{TE} Block\\($r=2$)};
+    \node (dots_b) [right=0.35cm of te2_b, font=\normalsize] {$\cdots$};
+
+    % Spatial conditioning branch below film1 (flowing left-to-right into a clean bus below film1 & film2)
+    \node (ln_spat_b) [norm_block, below=0.75cm of film1] {\acrshort{LN}};
+    \node (cp_spat_b) [block, left=0.38cm of ln_spat_b] {Causal\\Context};
+    \node (spat_b) [left=0.38cm of cp_spat_b] {$\mathbf{Z}_{\mathrm{spat}}$};
+
+    \draw [line] (in_b) -- (film1);
+    \draw [line] (film1) -- (te1_b);
+    \draw [line] (te1_b) -- node[lbl] {$\mathbf{H}^{(1)}$} (film2);
+    \draw [line] (film2) -- (te2_b);
+    \draw [line] (te2_b) -- (dots_b);
+
+    \draw [line] (spat_b) -- (cp_spat_b);
+    \draw [line] (cp_spat_b) -- (ln_spat_b);
+    \draw [line] (ln_spat_b.north) -- node[left, font=\scriptsize, inner xsep=2.5pt] {$\bar{\mathbf{Z}}_{\mathrm{spat}}$} (film1.south);
+    \coordinate (bus_split) at ($(ln_spat_b.north)!0.45!(film1.south)$);
+    \draw [line] (bus_split) -| (film2.south);
+
+    \node [font=\footnotesize\bfseries] at (te1_b |- label_a) {(b) Late Fusion via \acrshort{FiLM}};
+  \end{tikzpicture}%
+  }
+  \caption{Feature fusion strategies in the baseline Transformer architecture~\cite{cornell2022overlapped}: (a) early fusion via feature concatenation prior to the bottleneck point-wise convolution, and (b) late fusion via layer-wise \acrshort{FiLM} conditioning prior to each \acrshort{TE} block.}
+  \label{fig:feature_fusion}
+\end{figure*}
+
+When combining single-channel spectral cues with multi-microphone spatial cues in the baseline Transformer architecture, Cornell et al.~\cite{cornell2022overlapped} investigated two distinct fusion strategies: early fusion via input concatenation and late fusion via \gls{FiLM}~\cite{perez2018film}, both depicted in~\Cref{fig:feature_fusion}.
+
+Let $\mathbf{Z}_{\mathrm{spec}} = \begin{bmatrix} \mathbf{z}_1^{(\mathrm{spec})} & \cdots & \mathbf{z}_T^{(\mathrm{spec})} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{spec}} \times T}$ denote the single-channel spectral feature sequence extracted from a reference microphone $m_{\mathrm{ref}}$ (e.g., $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$ with $D_{\mathrm{spec}} = D_{\mathrm{mel}}$). In the baseline multi-channel framework of~\cite{cornell2022overlapped}, pairwise spatial features extracted across $P$ selected microphone pairs (such as $\mathbf{Z}_{\mathrm{CSIPD}} \in \mathbb{R}^{P \times 2F \times T}$ or $\mathbf{Z}_{\mathrm{PSC}} \in \mathbb{R}^{P \times 3F \times T}$) are flattened across the pair dimension into a single spatial feature vector per time frame $t$:
+\begin{align}
+  \mathbf{z}_t^{(\mathrm{spat})} = \begin{bmatrix} \left(\mathbf{z}_{1,t}^{(\mathrm{spat})}\right)^{\mathrm{T}} & \cdots & \left(\mathbf{z}_{P,t}^{(\mathrm{spat})}\right)^{\mathrm{T}} \end{bmatrix}^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{spat}} \times 1},
+  \label{eq:flattened_spatial_vec}
+\end{align}
+with $D_{\mathrm{spat}} = P \cdot D_{\mathrm{pair}}$ (whereas array-level coherence features such as $\mathbf{Z}_{\mathrm{GMSC}}$ and $\mathbf{Z}_{\mathrm{wGMSC}}$ directly satisfy $C=1$ with $D_{\mathrm{spat}} \in \{F, 2F\}$). Stacking $\mathbf{z}_t^{(\mathrm{spat})}$ across all $T$ frames yields $\mathbf{Z}_{\mathrm{spat}} \in \mathbb{R}^{D_{\mathrm{spat}} \times T}$.
+
+Prior to fusion, $\mathbf{Z}_{\mathrm{spec}}$ and $\mathbf{Z}_{\mathrm{spat}}$ independently undergo causal context concatenation according to~\Cref{eq:causal_cat}, yielding $\tilde{\mathbf{z}}_t^{(\mathrm{spec})} \in \mathbb{R}^{D_{\mathrm{cat,spec}} \times 1}$ and $\tilde{\mathbf{z}}_t^{(\mathrm{spat})} \in \mathbb{R}^{D_{\mathrm{cat,spat}} \times 1}$, followed by separate feature-wise \gls{LN} as in~\Cref{eq:layernorm_def}:
+\begin{align}
+  \bar{\mathbf{z}}_t^{(\mathrm{spec})} &= \mathrm{LN}\!\left\{\tilde{\mathbf{z}}_t^{(\mathrm{spec})}\right\} \in \mathbb{R}^{D_{\mathrm{cat,spec}} \times 1}, \label{eq:ln_spec_stream} \\
+  \bar{\mathbf{z}}_t^{(\mathrm{spat})} &= \mathrm{LN}\!\left\{\tilde{\mathbf{z}}_t^{(\mathrm{spat})}\right\} \in \mathbb{R}^{D_{\mathrm{cat,spat}} \times 1}, \label{eq:ln_spat_stream}
+\end{align}
+where $D_{\mathrm{cat,spec}} = (T_{\mathrm{c}} + 1) D_{\mathrm{spec}}$ and $D_{\mathrm{cat,spat}} = (T_{\mathrm{c}} + 1) D_{\mathrm{spat}}$, forming the matrices $\bar{\mathbf{Z}}_{\mathrm{spec}} \in \mathbb{R}^{D_{\mathrm{cat,spec}} \times T}$ and $\bar{\mathbf{Z}}_{\mathrm{spat}} \in \mathbb{R}^{D_{\mathrm{cat,spat}} \times T}$.
+
+\subsubsection{Early Fusion via Input Concatenation}
+\label{sec:early_fusion}
+As shown in~\Cref{fig:feature_fusion}(a), early fusion concatenates the normalized spectral and spatial context vectors along the feature axis at each time frame $t \in \{1, \dots, T\}$:
+\begin{align}
+  \bar{\mathbf{z}}_t^{(\mathrm{early})} =
+  \begin{bmatrix}
+    \bar{\mathbf{z}}_t^{(\mathrm{spec})} \\
+    \bar{\mathbf{z}}_t^{(\mathrm{spat})}
+  \end{bmatrix}
+  \in \mathbb{R}^{(D_{\mathrm{cat,spec}} + D_{\mathrm{cat,spat}}) \times 1}.
+  \label{eq:early_fusion_concat}
+\end{align}
+The bottleneck point-wise ($1 \times 1$) convolution in~\Cref{eq:bottleneck_conv} is then applied directly to the joint vector $\bar{\mathbf{z}}_t^{(\mathrm{early})}$:
+\begin{align}
+  \mathbf{h}_t^{(0,\mathrm{in})} = \mathbf{W}_{\mathrm{in}}^{(\mathrm{early})} \bar{\mathbf{z}}_t^{(\mathrm{early})} + \mathbf{b}_{\mathrm{in}}^{(\mathrm{early})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1},
+  \label{eq:early_fusion_bottleneck}
+\end{align}
+where $\mathbf{W}_{\mathrm{in}}^{(\mathrm{early})} \in \mathbb{R}^{D_{\mathrm{emb}} \times (D_{\mathrm{cat,spec}} + D_{\mathrm{cat,spat}})}$ and $\mathbf{b}_{\mathrm{in}}^{(\mathrm{early})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$. All subsequent stages (sinusoidal \gls{PE}, the $R$ \gls{TE} blocks, and the output classification head) remain identical to~\Cref{sec:causal_transformer_base}. While computationally simple, early fusion forces both feature modalities through a single $D_{\mathrm{emb}}$-dimensional bottleneck in the first layer, which can compress high-dimensional pairwise spatial representations when $D_{\mathrm{cat,spat}} \gg D_{\mathrm{cat,spec}}$~\cite{cornell2022overlapped}.
+
+\subsubsection{Late Fusion via Feature-Wise Linear Modulation (FiLM)}
+\label{sec:late_fusion_film}
+To avoid compressing spatial information in the initial bottleneck and to provide spatial cues directly to deeper layers, late fusion injects $\bar{\mathbf{z}}_t^{(\mathrm{spat})}$ prior to each \gls{TE} block $r \in \{1, \dots, R\}$ via \gls{FiLM}~\cite{perez2018film,cornell2022overlapped}, as depicted in~\Cref{fig:feature_fusion}(b). In this configuration, the initial embedding sequence $\mathbf{H}^{(0)} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$ is computed exclusively from the normalized spectral stream $\bar{\mathbf{z}}_t^{(\mathrm{spec})}$ via~\Cref{eq:bottleneck_conv,eq:pos_enc_add}.
+
+At the entrance of each \gls{TE} block $r \in \{1, \dots, R\}$, a layer-specific \gls{FiLM} generator projects the normalized spatial conditioning vector $\bar{\mathbf{z}}_t^{(\mathrm{spat})}$ into a feature-wise scaling vector $\bm{\gamma}_t^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ and shifting vector $\bm{\beta}_t^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$:
+\begin{align}
+  \bm{\gamma}_t^{(r,\mathrm{FiLM})} &= \mathbf{W}_{\gamma}^{(r)} \bar{\mathbf{z}}_t^{(\mathrm{spat})} + \mathbf{b}_{\gamma}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \label{eq:film_gamma} \\
+  \bm{\beta}_t^{(r,\mathrm{FiLM})} &= \mathbf{W}_{\beta}^{(r)} \bar{\mathbf{z}}_t^{(\mathrm{spat})} + \mathbf{b}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \label{eq:film_beta}
+\end{align}
+with learnable projection matrices $\mathbf{W}_{\gamma}^{(r)}, \mathbf{W}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{cat,spat}}}$ and bias vectors $\mathbf{b}_{\gamma}^{(r)}, \mathbf{b}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$. The hidden representation $\mathbf{h}_t^{(r-1)}$ entering the $r$-th \gls{TE} block is then modulated via an element-wise affine transformation~\cite{perez2018film}:
+\begin{align}
+  \mathbf{h}_t^{(r-1,\mathrm{FiLM})} &= \mathrm{FiLM}\!\left\{\mathbf{h}_t^{(r-1)}, \bar{\mathbf{z}}_t^{(\mathrm{spat})}\right\} \nonumber \\
+  &= \bm{\gamma}_t^{(r,\mathrm{FiLM})} \odot \mathbf{h}_t^{(r-1)} + \bm{\beta}_t^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}.
+  \label{eq:film_modulation}
+\end{align}
+Stacking $\mathbf{h}_t^{(r-1,\mathrm{FiLM})}$ across all $T$ frames yields the modulated matrix $\mathbf{H}^{(r-1,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times T}$, which replaces $\mathbf{H}^{(r-1)}$ as the input to the $r$-th \gls{TE} block in~\Cref{sec:transformer_encoder_blocks}.
 
 \subsection{Array Geometry Agnosticism via Attention-Pooling}
 % Detail how variable microphone counts (2, 4, 6, 8 mics) are handled. Explain the early channel-pooling mechanism (Transform-Average-Concatenate (TAC) or Self-Attention Channel Combinator).
@@ -495,7 +895,7 @@ respectively.
 
 \subsection{Loss function}
 
-Output: classifier $k_t \in \{0,\dots,K_{max}\}$ for each frame
+Output: classifier $\widehat{K}_t \in \{0, 1, \dots, K_{\mathrm{max}}\}$ for each frame
 
 \begin{itemize}
   \item cross entropy loss
