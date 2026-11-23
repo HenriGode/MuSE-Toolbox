@@ -50,6 +50,8 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         min_context_s: float,
         train_items_per_epoch: int,
         augmentation: dict,
+        eval_chunk_length_s: float | None = None,
+        eval_min_context_s: float | None = None,
         **kwargs
     ) -> None:
         """Initializes the BaseDataModule.
@@ -70,6 +72,10 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             min_context_s (float): Overlap context in seconds.
             train_items_per_epoch (int): Number of training items per epoch.
             augmentation (dict): Augmentation configuration dictionary.
+            eval_chunk_length_s (Optional[float]): Evaluation chunk length in seconds
+                for validation and testing splits (defaults to `chunk_length_s` if None).
+            eval_min_context_s (Optional[float]): Evaluation overlap context in seconds
+                for validation and testing splits (defaults to `min_context_s` if None).
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -85,6 +91,8 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.acc_device = acc_device
         self.chunk_length_s = chunk_length_s
         self.min_context_s = min_context_s
+        self.eval_chunk_length_s = eval_chunk_length_s
+        self.eval_min_context_s = eval_min_context_s
         self.train_items_per_epoch = train_items_per_epoch
         self.augmentation = augmentation
         
@@ -204,7 +212,13 @@ class BaseDataModule(pl.LightningDataModule, ABC):
                     meta_path = split_dir / f"scenario_{i}_meta.pt"
                     
                     if audio_path.exists() and sad_path.exists() and meta_path.exists():
-                        continue
+                        cached_meta = torch.load(meta_path, weights_only=False)
+                        if cached_meta.get("sampling_frequency") == self.sampling_frequency:
+                            continue
+                        log.info(
+                            f"Regenerating {audio_path.name} for sampling_frequency={self.sampling_frequency} Hz "
+                            f"(cached={cached_meta.get('sampling_frequency')} Hz)."
+                        )
 
                     data = generator.__getitem__(i)
                     input_tensor = data["input"]
@@ -219,6 +233,7 @@ class BaseDataModule(pl.LightningDataModule, ABC):
                         sad_tensor = torch.zeros(1, input_tensor.shape[1], dtype=torch.bool)
                         
                     meta["speaker_ids"] = speaker_ids
+                    meta["sampling_frequency"] = self.sampling_frequency
                     
                     for key in ["sad_samples", "sad_frames", "source_count"]:
                         if key in meta:
@@ -247,7 +262,9 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             train_items_per_epoch=self.train_items_per_epoch,
             augmentation=self.augmentation,
             fs=self.sampling_frequency,
-            transform=self.transform
+            transform=self.transform,
+            eval_chunk_length_s=self.eval_chunk_length_s,
+            eval_min_context_s=self.eval_min_context_s,
         )
 
     def train_dataloader(self) -> DataLoader:

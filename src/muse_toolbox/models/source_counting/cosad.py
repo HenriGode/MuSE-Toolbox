@@ -38,7 +38,8 @@ class COSADmodule(BaseLitModel):
         compute_complexity_metrics: bool = False,
         check_causality: bool = False,
         permute_channels: bool = True,
-    ):
+        eval_stitch_mode: str = "auto",
+    ) -> None:
         """
         Initializes the COSADmodule.
 
@@ -57,6 +58,11 @@ class COSADmodule(BaseLitModel):
             compute_complexity_metrics (bool): Whether to profile computational complexity.
             check_causality (bool): Whether to enforce causality checks on the model.
             permute_channels (bool): If True, randomly permutes channels during training.
+            eval_stitch_mode (str): Sliding-window evaluation stitching strategy across
+                overlapping chunks (`"auto"`, `"overlap_avg"`, `"causal_burnin"`, or `"none"`).
+                When set to `"auto"` (default), uses `"causal_burnin"` if
+                `source_count_estimator.causal` is `True`, and `"overlap_avg"` (Cornell et al.'s
+                overlapping sliding-window logit averaging) when `causal` is `False`.
         """
         if isinstance(feature_extractor, functools.partial):
             feature_extractor = feature_extractor(transform=transform)
@@ -100,6 +106,11 @@ class COSADmodule(BaseLitModel):
         self.channel_combinator = channel_combinator
         self.source_count_estimator = source_count_estimator
         self.permute_channels = permute_channels
+        self.eval_stitch_mode = eval_stitch_mode
+        self._eval_overlap_state: dict[str, dict[str, Any] | None] = {
+            "val": None,
+            "test": None,
+        }
 
         self.num_params = self.count_parameters()
 
@@ -190,6 +201,178 @@ class COSADmodule(BaseLitModel):
             "time_lengths": batch["time_lengths"],
             "meta": batch["meta"]
         }
+
+    def get_active_eval_stitch_mode(self) -> str:
+        """Resolves the active evaluation sliding-window stitching mode.
+
+        Returns:
+            str: One of `"overlap_avg"`, `"causal_burnin"`, or `"none"`.
+
+        Raises:
+            ValueError: If `self.eval_stitch_mode` is not a recognized mode.
+        """
+        mode = (self.eval_stitch_mode or "auto").lower()
+        if mode == "auto":
+            is_causal = bool(getattr(self.source_count_estimator, "causal", False))
+            return "causal_burnin" if is_causal else "overlap_avg"
+        if mode in {"overlap_avg", "causal_burnin", "none"}:
+            return mode
+        raise ValueError(
+            f"Unsupported eval_stitch_mode='{self.eval_stitch_mode}'. "
+            "Expected 'auto', 'overlap_avg', 'causal_burnin', or 'none'."
+        )
+
+    def on_validation_epoch_start(self) -> None:
+        """Resets sliding-window overlap buffer state at the start of validation."""
+        self._eval_overlap_state["val"] = None
+
+    def on_test_epoch_start(self) -> None:
+        """Resets sliding-window overlap buffer state at the start of testing."""
+        self._eval_overlap_state["test"] = None
+
+    def _prepare_eval_estimates_and_targets(
+        self, processed_batch: dict[str, Any], step_type: str
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]:
+        """Stitches or trims overlapping sliding-window chunks during evaluation.
+
+        Supports two unified sliding-window schemes on deterministic evaluation grids:
+        1. `"overlap_avg"` (Cornell et al., 2022 non-causal baseline):
+           Applies a sliding window (default 3.0 s with 50% / 1.5 s overlap) and averages
+           the unnormalized class logits across overlapping frame regions of consecutive
+           chunks from the same recording before computing frame-level predictions.
+        2. `"causal_burnin"` (Strictly causal online chunking):
+           Applies a sliding window (e.g., 7.0 s with 2.0 s overlap) where the first chunk
+           of a recording is evaluated in full (`[0 : T_win]`), and every subsequent chunk
+           discards its initial `overlap_frames` burn-in warmup prefix (`[0 : O]`) and
+           evaluates only the newly advancing causal tail (`[O : T_win]`) with zero future
+           look-ahead or overlap averaging.
+
+        If chunk grid metadata (`"recording_id"`, `"start_sample"`, `"hop_samples"`) is not
+        present in `processed_batch["meta"]` or `stitch_mode == "none"`, falls back to full
+        valid-frame slicing via `super()._prepare_eval_estimates_and_targets()`.
+
+        Args:
+            processed_batch (dict[str, Any]): Forward pass output dictionary.
+            step_type (str): Evaluation stage (`"val"` or `"test"`).
+
+        Returns:
+            tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]: Stitched
+                per-chunk `(estimates, targets, meta_dict)` lists ready for metric update.
+        """
+        stitch_mode = self.get_active_eval_stitch_mode()
+        meta = processed_batch["meta"]
+        has_grid_meta = (
+            isinstance(meta, dict)
+            and "recording_id" in meta
+            and "start_sample" in meta
+            and "hop_samples" in meta
+        )
+        if stitch_mode == "none" or not has_grid_meta:
+            return super()._prepare_eval_estimates_and_targets(
+                processed_batch, step_type
+            )
+
+        meta_dict = meta.copy()
+        estimates = processed_batch["estimates"]
+        time_lengths = processed_batch["time_lengths"]
+        targets = meta_dict["source_count"]
+        max_frames = int(estimates.shape[1])
+        hop_length = (
+            int(self.transform.hop_length)
+            if self.transform is not None and hasattr(self.transform, "hop_length")
+            else 1
+        )
+
+        recording_ids = meta_dict["recording_id"]
+        start_samples = meta_dict["start_sample"]
+        hop_samples_list = meta_dict["hop_samples"]
+        is_last_chunks = meta_dict.get(
+            "is_last_chunk", [False] * len(time_lengths)
+        )
+
+        valid_estimates: list[torch.Tensor] = []
+        valid_targets: list[torch.Tensor] = []
+
+        for i in range(len(time_lengths)):
+            sample_len = int(time_lengths[i].item())
+            target_i = targets[i].to(estimates.device)
+            valid_len = self._sample_length_to_frame_count(
+                sample_len=sample_len,
+                max_frames=max_frames,
+                target_len=int(target_i.shape[0]),
+            )
+            est_i = estimates[i, :valid_len]
+            tgt_i = target_i[:valid_len]
+
+            rec_id = str(recording_ids[i])
+            start_sample = int(start_samples[i])
+            hop_samples = int(hop_samples_list[i])
+            is_last_chunk = bool(is_last_chunks[i])
+
+            hop_frames = max(1, min(valid_len, hop_samples // hop_length))
+            overlap_frames = max(0, valid_len - hop_frames)
+
+            if stitch_mode == "causal_burnin":
+                if start_sample == 0 or overlap_frames == 0:
+                    valid_estimates.append(est_i)
+                    valid_targets.append(tgt_i)
+                else:
+                    valid_estimates.append(est_i[overlap_frames:valid_len])
+                    valid_targets.append(tgt_i[overlap_frames:valid_len])
+
+            elif stitch_mode == "overlap_avg":
+                ov_frames = min(hop_frames, overlap_frames)
+                state = self._eval_overlap_state.get(step_type)
+                is_consecutive = (
+                    state is not None
+                    and state["recording_id"] == rec_id
+                    and state["next_start_sample"] == start_sample
+                    and state["tail_logits"].shape[0] == ov_frames
+                )
+
+                if not is_consecutive or ov_frames == 0:
+                    # First chunk of recording (or no overlap): emit non-overlapping head [:hop_frames]
+                    emitted_est = est_i[:hop_frames]
+                    emitted_tgt = tgt_i[:hop_frames]
+                else:
+                    # Consecutive overlapping chunk: average previous tail with current head [:ov_frames]
+                    prev_tail_logits = state["tail_logits"].to(est_i.device)
+                    avg_overlap = 0.5 * (prev_tail_logits + est_i[:ov_frames])
+                    if hop_frames > ov_frames:
+                        emitted_est = torch.cat(
+                            [avg_overlap, est_i[ov_frames:hop_frames]], dim=0
+                        )
+                    else:
+                        emitted_est = avg_overlap
+                    emitted_tgt = tgt_i[:hop_frames]
+
+                if is_last_chunk or ov_frames == 0:
+                    if valid_len > hop_frames:
+                        emitted_est = torch.cat(
+                            [emitted_est, est_i[hop_frames:valid_len]], dim=0
+                        )
+                        emitted_tgt = torch.cat(
+                            [emitted_tgt, tgt_i[hop_frames:valid_len]], dim=0
+                        )
+                    self._eval_overlap_state[step_type] = None
+                else:
+                    new_tail_logits = (
+                        est_i[hop_frames : hop_frames + ov_frames].detach().clone()
+                    )
+                    new_tail_targets = (
+                        tgt_i[hop_frames : hop_frames + ov_frames].detach().clone()
+                    )
+                    self._eval_overlap_state[step_type] = {
+                        "recording_id": rec_id,
+                        "next_start_sample": start_sample + hop_samples,
+                        "tail_logits": new_tail_logits,
+                        "tail_targets": new_tail_targets,
+                    }
+
+                valid_estimates.append(emitted_est)
+                valid_targets.append(emitted_tgt)
+
+        return valid_estimates, valid_targets, meta_dict
 
     def predict_step(
         self, batch: dict, batch_idx: int, dataloader_idx: int = 0

@@ -239,6 +239,8 @@ class BrudexDataModule(BaseDataModule):
         min_context_s: float,
         train_items_per_epoch: int,
         augmentation: dict,
+        eval_chunk_length_s: float | None = None,
+        eval_min_context_s: float | None = None,
     ):
         """
         Initializes the BrudexDataModule.
@@ -260,6 +262,8 @@ class BrudexDataModule(BaseDataModule):
             min_context_s (float): Overlap context in seconds.
             train_items_per_epoch (int): Number of training items per epoch.
             augmentation (dict): Augmentation configuration dictionary.
+            eval_chunk_length_s (float | None): Optional evaluation sliding-window duration in seconds.
+            eval_min_context_s (float | None): Optional evaluation sliding-window overlap in seconds.
         """
         # --- Step 1: Call parent constructor and perform simple assignments ---
         super().__init__(
@@ -276,6 +280,8 @@ class BrudexDataModule(BaseDataModule):
             acc_device=acc_device,
             chunk_length_s=chunk_length_s,
             min_context_s=min_context_s,
+            eval_chunk_length_s=eval_chunk_length_s,
+            eval_min_context_s=eval_min_context_s,
             train_items_per_epoch=train_items_per_epoch,
             augmentation=augmentation,
         )

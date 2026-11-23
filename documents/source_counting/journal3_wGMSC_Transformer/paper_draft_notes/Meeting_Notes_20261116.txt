@@ -1,0 +1,29 @@
+Pure baseline experiments
+
+hat eine omnidirecationalität in den syntehtischen daten limitierungen sodass mann 
+
+
+NOchmal gurundlegend über datasets nachdenken
+directionalität
+
+
+acausal ami ami (single und multi)
+causal ami ami (single und multi)
+
+causal und acauasal singule und multo
+pyroom (matched AMI array) pyroom
+pyroom AMI
+
+pyroom pyrrom 
+
+
+Bringt variabilität in array 
+
+
+pyroom und ami istt das sinnvoll ? 
+
+
+ich muss erstmal die datasets ganz saube verifizieren
+
+
+nochmal zit

@@ -1,8 +1,10 @@
 _target_: muse_toolbox.models.source_counting.estimators.transformer_estimator.TransformerEstimator
 _partial_: true
 max_sources: ${dataset.generation_config.max_sources}
-chunk_size: 7 # Number of past causal context frames (T_c)
-embed_dim: 128
+causal: false # false: Cornell bidirectional cat-pool & unmasked MHA; true: strictly causal
+chunk_size: 7 # Context frames C (bidirectional +/-C when causal=false; past-only T_c when causal=true)
+subsample: 10 # Temporal subsampling factor S / T_sub (1 disables subsampling)
+embed_dim: 384
 n_heads: 4
 ff_inner: 1024
 n_layers: 4

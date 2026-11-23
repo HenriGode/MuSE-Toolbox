@@ -57,3 +57,4 @@ metrics_test:
 compute_complexity_metrics: False
 check_causality: False
 permute_channels: False
+eval_stitch_mode: "auto" # "auto" uses "overlap_avg" when causal=false and "causal_burnin" when causal=true

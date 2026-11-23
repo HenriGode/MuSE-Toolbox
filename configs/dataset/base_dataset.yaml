@@ -17,8 +17,13 @@ reset: False
 transform: ${transform}
 
 # Chunking and Inference Parameters
-chunk_length_s: 7.0
-min_context_s: 2.0
+# Cornell defaults: 5.0 s training chunks (2.5 s overlap), 3.0 s eval sliding window (1.5 s / 50% overlap).
+# For causal 7.0 s / 2.0 s burn-in chunking, set chunk_length_s: 7.0, min_context_s: 2.0,
+# eval_chunk_length_s: 7.0, eval_min_context_s: 2.0.
+chunk_length_s: 5.0
+min_context_s: 2.5
+eval_chunk_length_s: 3.0
+eval_min_context_s: 1.5
 train_items_per_epoch: 5000
 
 # Data Augmentation Config (disabled by default, specific logic in AMI)

@@ -240,6 +240,64 @@ class BaseLitModel(pl.LightningModule):
 
         return loss_dict, processed_batch
 
+    def _sample_length_to_frame_count(
+        self, sample_len: int, max_frames: int, target_len: int
+    ) -> int:
+        """Converts a waveform sample length to the valid STFT frame count.
+
+        Args:
+            sample_len (int): Waveform duration in time samples.
+            max_frames (int): Maximum available frame dimension in the model output.
+            target_len (int): Frame length of the ground-truth target sequence.
+
+        Returns:
+            int: Clamped number of valid STFT frames.
+        """
+        transform = getattr(self, "transform", None)
+        if transform is not None and hasattr(transform, "hop_length"):
+            frame_count = sample_len // int(transform.hop_length) + 1
+        else:
+            frame_count = sample_len
+        return max(1, min(frame_count, max_frames, target_len))
+
+    def _prepare_eval_estimates_and_targets(
+        self, processed_batch: dict[str, Any], step_type: str
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]:
+        """Slices batch estimates and targets to valid STFT frame lengths for metric evaluation.
+
+        Subclasses (such as `COSADmodule`) may override this hook to apply sliding-window
+        overlap logit averaging or causal burn-in frame trimming before updating metrics.
+
+        Args:
+            processed_batch (dict[str, Any]): Output dictionary from `forward()`.
+            step_type (str): Evaluation stage identifier (`"val"` or `"test"`).
+
+        Returns:
+            tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]: Tuple of
+                `(valid_estimates, valid_targets, meta_dict)`.
+        """
+        meta_dict = processed_batch["meta"].copy()
+        estimates = processed_batch["estimates"]
+        time_lengths = processed_batch["time_lengths"]
+        targets = meta_dict["source_count"]
+
+        valid_estimates: list[torch.Tensor] = []
+        valid_targets: list[torch.Tensor] = []
+        max_frames = int(estimates.shape[1])
+
+        for i in range(len(time_lengths)):
+            sample_len = int(time_lengths[i].item())
+            target_i = targets[i].to(estimates.device)
+            valid_len = self._sample_length_to_frame_count(
+                sample_len=sample_len,
+                max_frames=max_frames,
+                target_len=int(target_i.shape[0]),
+            )
+            valid_estimates.append(estimates[i, :valid_len])
+            valid_targets.append(target_i[:valid_len])
+
+        return valid_estimates, valid_targets, meta_dict
+
     def _metric_step(
         self, processed_batch: dict, dataloader_idx: int, step_type: str
     ) -> None:
@@ -251,23 +309,13 @@ class BaseLitModel(pl.LightningModule):
             dataloader_idx (int): The index of the dataloader.
             step_type (str): The step type ('val', 'test').
         """
-        meta_dict = processed_batch["meta"].copy()
-        estimates = processed_batch["estimates"]
-        time_lengths = processed_batch["time_lengths"]
-        targets = meta_dict["source_count"]
-        
-        # Slice the estimates and targets to their valid lengths to form lists
-        valid_estimates = []
-        valid_targets = []
-        for i in range(len(time_lengths)):
-            valid_len = time_lengths[i]
-            valid_estimates.append(estimates[i, :valid_len])
-            valid_targets.append(targets[i][:valid_len].to(estimates.device))
-            
-        estimates = valid_estimates
-        targets = valid_targets
-            
-        meta_dict["dataloader_idx"] = self.batch_size * [dataloader_idx]
+        estimates, targets, meta_dict = self._prepare_eval_estimates_and_targets(
+            processed_batch, step_type
+        )
+        if not estimates:
+            return
+
+        meta_dict["dataloader_idx"] = len(estimates) * [dataloader_idx]
         self.metric_collections[step_type].update(
             estimates, targets, meta_dict, dataloader_idx
         )
