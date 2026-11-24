@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /model: cosad
-  - override /dataset: brudex
+  - override /model: osc
+  - override /dataset: ami
 
 task: source_counting

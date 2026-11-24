@@ -1,19 +1,22 @@
 defaults:
-  - dataset: brudex
-  - model: cosad
+  - dataset: ami
+  - model: osc
   - transform: default
   - trainer: default
   - logger: wandb
   - callbacks: default
   - task: null
   - _self_
-  - experiment: J3_brudex
+  - experiment: null
 
 # Global settings
 task: source_counting
 experiment_name: default_exp
 train: True
 test: True
+# Optional separate or multi-dataset testing list/dict (e.g. [ami, brudex, pra_anf_circ_8ch]).
+# When null, testing runs on the primary `dataset` above.
+test_datasets: null
 predict: False
 predictions_dir: null
 

@@ -1,11 +1,10 @@
 # @package _global_
 defaults:
   - override /task: source_counting
-  - override /model: cosad
+  - override /model: osc
   - override /dataset: ami # pra_anf_circ_8ch # brudex
 
-  - override /model/feature_extractor: wgmsc
-  - override /model/channel_combinator: self_attention
+  - override /model/feature_extractor: log_mel
 
 trainer:
   max_epochs: 2

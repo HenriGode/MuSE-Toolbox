@@ -67,49 +67,152 @@ class BaseLitModel(pl.LightningModule):
         self.metrics_train = metrics_train if metrics_train is not None else {}
         self.metrics_val = metrics_val if metrics_val is not None else {}
         self.metrics_test = metrics_test if metrics_test is not None else {}
-
-        # Helper function to initialize metrics
-        def _create_metric_list(metric_config: dict) -> list:
-            metric_list = []
-            for met_name, met_params in metric_config.items():
-                if not met_name:
-                    continue
-
-                metric_class = getattr(metrics, met_name)
-
-                # Combine model-level kwargs with metric-specific params from config
-                all_params = {
-                    **(met_params or {}),
-                    **{
-                        "transform": self.transform,
-                        "model_name": self.model_name,
-                        "sad_model_name": self.sad_model_name,
-                        **kwargs,
-                    },
-                }
-
-                # Inspect the metric's __init__ signature
-                sig = inspect.signature(metric_class.__init__)
-
-                # Filter the combined params to only include what the metric accepts
-                valid_params = {
-                    k: v for k, v in all_params.items() if k in sig.parameters
-                }
-
-                metric_list.append(metric_class(**valid_params))
-            return metric_list
+        self._extra_metric_kwargs = dict(kwargs)
 
         self.metric_collections = {
-            "train": MetricCollection(
-                _create_metric_list(self.metrics_train), compute_groups=False
-            ),
-            "val": MetricCollection(
-                _create_metric_list(self.metrics_val), compute_groups=False
-            ),
-            "test": MetricCollection(
-                _create_metric_list(self.metrics_test), compute_groups=False
-            ),
+            "train": self._build_metric_collection(self.metrics_train),
+            "val": self._build_metric_collection(self.metrics_val),
+            "test": self._build_metric_collection(self.metrics_test),
         }
+        self.test_dataset_names: list[str] = []
+        self.test_dataset_max_sources: dict[str, int | None] = {}
+        self.test_metric_collections: dict[str, MetricCollection] = {}
+
+    def _build_metric_collection(
+        self,
+        metric_config: dict[str, Any],
+        stage_override: str | None = None,
+        max_sources_override: int | None = None,
+        skip_confusion_matrix: bool = False,
+    ) -> MetricCollection:
+        """Instantiates a `MetricCollection` from a metric configuration dictionary.
+
+        Args:
+            metric_config (dict[str, Any]): Mapping of metric class names to parameter dicts.
+            stage_override (str | None, optional): Optional stage prefix override
+                (e.g., ``"test/ami"``) passed to metrics accepting ``stage``.
+            max_sources_override (int | None, optional): Optional dataset-specific
+                ``max_sources`` override passed to metrics accepting ``max_sources``.
+            skip_confusion_matrix (bool, optional): If True, disables any
+                ``ConfusionMatrix`` instance in this collection (used for the pooled
+                overall collection when test datasets have heterogeneous ``max_sources``).
+
+        Returns:
+            MetricCollection: Configured `torchmetrics.MetricCollection`.
+        """
+        metric_list = []
+        for met_name, met_params in metric_config.items():
+            if not met_name:
+                continue
+
+            metric_class = getattr(metrics, met_name)
+            all_params: dict[str, Any] = {
+                **(met_params or {}),
+                "transform": self.transform,
+                "model_name": self.model_name,
+                "sad_model_name": self.sad_model_name,
+                **self._extra_metric_kwargs,
+            }
+            if stage_override is not None and "stage" in all_params:
+                all_params["stage"] = stage_override
+            if max_sources_override is not None and "max_sources" in all_params:
+                all_params["max_sources"] = max_sources_override
+
+            sig = inspect.signature(metric_class.__init__)
+            valid_params = {
+                k: v for k, v in all_params.items() if k in sig.parameters
+            }
+            metric_instance = metric_class(**valid_params)
+            if skip_confusion_matrix and met_name == "ConfusionMatrix":
+                if hasattr(metric_instance, "enabled"):
+                    metric_instance.enabled = False
+            metric_list.append(metric_instance)
+
+        return MetricCollection(metric_list, compute_groups=False)
+
+    def configure_test_datasets(
+        self,
+        dataset_names: list[str],
+        dataset_max_sources: list[int | None] | dict[str, int | None] | None = None,
+    ) -> None:
+        """Configures per-dataset and pooled overall test metric collections.
+
+        Args:
+            dataset_names (list[str]): Ordered list of test dataset names matching
+                the order of test dataloaders passed to ``trainer.test()``.
+            dataset_max_sources (list[int | None] | dict[str, int | None] | None, optional):
+                Optional per-dataset ``max_sources`` values. If multiple test datasets
+                have different ``max_sources``, the pooled overall ``ConfusionMatrix``
+                is disabled while each per-dataset ``ConfusionMatrix`` uses its own
+                ``max_sources``.
+        """
+        self.test_dataset_names = list(dataset_names)
+        max_sources_map: dict[str, int | None] = {}
+        if isinstance(dataset_max_sources, dict):
+            for name in self.test_dataset_names:
+                max_sources_map[name] = dataset_max_sources.get(name)
+        elif isinstance(dataset_max_sources, list):
+            for idx, name in enumerate(self.test_dataset_names):
+                max_sources_map[name] = (
+                    dataset_max_sources[idx]
+                    if idx < len(dataset_max_sources)
+                    else None
+                )
+        else:
+            for name in self.test_dataset_names:
+                max_sources_map[name] = None
+        self.test_dataset_max_sources = max_sources_map
+
+        known_max_sources = {
+            ms for ms in max_sources_map.values() if ms is not None
+        }
+        # Also compare against the model/config default max_sources in metrics_test if present
+        cfg_cm = (self.metrics_test or {}).get("ConfusionMatrix") or {}
+        default_ms = cfg_cm.get("max_sources")
+        all_known_ms = set(known_max_sources)
+        if default_ms is not None and len(self.test_dataset_names) <= 1 and not all_known_ms:
+            all_known_ms.add(int(default_ms))
+
+        heterogeneous_max_sources = len(known_max_sources) > 1
+        if heterogeneous_max_sources:
+            log.info(
+                f"Test datasets have heterogeneous max_sources ({sorted(known_max_sources)}); "
+                "disabling combined overall ConfusionMatrix while keeping per-dataset ConfusionMatrix instances."
+            )
+
+        single_override_ms = (
+            next(iter(known_max_sources))
+            if len(known_max_sources) == 1
+            else None
+        )
+        self.metric_collections["test"] = self._build_metric_collection(
+            self.metrics_test,
+            stage_override="test",
+            max_sources_override=single_override_ms,
+            skip_confusion_matrix=heterogeneous_max_sources,
+        )
+        self.test_metric_collections = {
+            ds_name: self._build_metric_collection(
+                self.metrics_test,
+                stage_override=f"test/{ds_name}",
+                max_sources_override=max_sources_map.get(ds_name),
+                skip_confusion_matrix=False,
+            )
+            for ds_name in self.test_dataset_names
+        }
+
+    def get_test_dataset_name(self, dataloader_idx: int) -> str:
+        """Returns the dataset identifier corresponding to a test dataloader index.
+
+        Args:
+            dataloader_idx (int): Index of the active test dataloader.
+
+        Returns:
+            str: Dataset identifier string.
+        """
+        if 0 <= dataloader_idx < len(self.test_dataset_names):
+            return self.test_dataset_names[dataloader_idx]
+        return f"dataset_{dataloader_idx}"
 
     @abstractmethod
     def forward(self, batch: dict) -> dict:
@@ -207,7 +310,9 @@ class BaseLitModel(pl.LightningModule):
         
         return valid_preds.unsqueeze(0), valid_targets.unsqueeze(0)
 
-    def _common_step(self, batch: dict, idx: int, step_type: str) -> tuple[dict, dict]:
+    def _common_step(
+        self, batch: dict, idx: int, step_type: str, dataloader_idx: int = 0
+    ) -> tuple[dict, dict]:
         """
         Executes a common forward pass, computes the loss, and logs the results.
 
@@ -215,6 +320,7 @@ class BaseLitModel(pl.LightningModule):
             batch: The input batch (dict).
             idx (int): The batch index.
             step_type (str): The step type (e.g., 'train', 'val', 'test') used as a prefix for logging.
+            dataloader_idx (int, optional): Active dataloader index. Defaults to 0.
 
         Returns:
             tuple[dict, dict]: A tuple containing the loss dictionary and the processed batch.
@@ -226,17 +332,43 @@ class BaseLitModel(pl.LightningModule):
         time_lengths = processed_batch["time_lengths"]
         
         valid_preds, valid_targets = self._flatten_and_mask(preds, targets, time_lengths)
-        loss_dict = {"loss": self.criterion.compute_loss(valid_preds, valid_targets)}
-            
-        self.log_dict(
-            {f"{step_type}/{x}": y for x, y in loss_dict.items()},
-            on_step=True,
-            on_epoch=True,
-            reduce_fx="mean",
-            batch_size=self.batch_size,
-            prog_bar=False,
-            sync_dist=True,
-        )
+        loss_targets = valid_targets
+        if (
+            step_type != "train"
+            and valid_preds.ndim >= 2
+            and valid_preds.shape[-1] > 1
+            and loss_targets.numel() > 0
+        ):
+            # Guard evaluation loss if a zero-shot test dataset has higher max_sources than the trained classifier head.
+            loss_targets = loss_targets.clamp(min=0, max=valid_preds.shape[-1] - 1)
+        loss_dict = {"loss": self.criterion.compute_loss(valid_preds, loss_targets)}
+
+        if step_type == "test" and len(self.test_dataset_names) > 1:
+            ds_name = self.get_test_dataset_name(dataloader_idx)
+            log_payload = {
+                f"test/{ds_name}/{x}": y for x, y in loss_dict.items()
+            }
+            self.log_dict(
+                log_payload,
+                on_step=True,
+                on_epoch=True,
+                reduce_fx="mean",
+                batch_size=self.batch_size,
+                prog_bar=False,
+                sync_dist=True,
+                add_dataloader_idx=False,
+            )
+        else:
+            self.log_dict(
+                {f"{step_type}/{x}": y for x, y in loss_dict.items()},
+                on_step=True,
+                on_epoch=True,
+                reduce_fx="mean",
+                batch_size=self.batch_size,
+                prog_bar=False,
+                sync_dist=True,
+                add_dataloader_idx=False,
+            )
 
         return loss_dict, processed_batch
 
@@ -254,23 +386,29 @@ class BaseLitModel(pl.LightningModule):
             int: Clamped number of valid STFT frames.
         """
         transform = getattr(self, "transform", None)
-        if transform is not None and hasattr(transform, "hop_length"):
-            frame_count = sample_len // int(transform.hop_length) + 1
+        if transform is not None and hasattr(transform, "samples2frames"):
+            frame_count = int(transform.samples2frames(sample_len).item())
+        elif transform is not None and hasattr(transform, "hop_length"):
+            frame_count = sample_len // int(transform.hop_length)
         else:
             frame_count = sample_len
         return max(1, min(frame_count, max_frames, target_len))
 
     def _prepare_eval_estimates_and_targets(
-        self, processed_batch: dict[str, Any], step_type: str
+        self,
+        processed_batch: dict[str, Any],
+        step_type: str,
+        dataloader_idx: int = 0,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]:
         """Slices batch estimates and targets to valid STFT frame lengths for metric evaluation.
 
-        Subclasses (such as `COSADmodule`) may override this hook to apply sliding-window
+        Subclasses (such as `OSCmodule`) may override this hook to apply sliding-window
         overlap logit averaging or causal burn-in frame trimming before updating metrics.
 
         Args:
             processed_batch (dict[str, Any]): Output dictionary from `forward()`.
             step_type (str): Evaluation stage identifier (`"val"` or `"test"`).
+            dataloader_idx (int, optional): Active dataloader index. Defaults to 0.
 
         Returns:
             tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]: Tuple of
@@ -310,15 +448,93 @@ class BaseLitModel(pl.LightningModule):
             step_type (str): The step type ('val', 'test').
         """
         estimates, targets, meta_dict = self._prepare_eval_estimates_and_targets(
-            processed_batch, step_type
+            processed_batch, step_type, dataloader_idx=dataloader_idx
         )
         if not estimates:
             return
 
         meta_dict["dataloader_idx"] = len(estimates) * [dataloader_idx]
-        self.metric_collections[step_type].update(
-            estimates, targets, meta_dict, dataloader_idx
-        )
+
+        if step_type == "test":
+            ds_name = self.get_test_dataset_name(dataloader_idx)
+            if ds_name not in self.test_metric_collections:
+                self.test_metric_collections[ds_name] = self._build_metric_collection(
+                    self.metrics_test,
+                    stage_override=f"test/{ds_name}",
+                )
+            ds_meta = meta_dict.copy()
+            ds_meta["dataset"] = len(estimates) * [ds_name]
+            self.test_metric_collections[ds_name].update(
+                estimates, targets, ds_meta, dataloader_idx
+            )
+
+            overall_meta = meta_dict.copy()
+            overall_meta["dataset"] = len(estimates) * [ds_name]
+            if len(self.test_dataset_names) > 1 and "scenario_id" in overall_meta:
+                overall_meta["scenario_id"] = [
+                    f"{ds_name}/{sid}" for sid in overall_meta["scenario_id"]
+                ]
+            self.metric_collections[step_type].update(
+                estimates, targets, overall_meta, dataloader_idx
+            )
+        else:
+            self.metric_collections[step_type].update(
+                estimates, targets, meta_dict, dataloader_idx
+            )
+
+    def compute_test_metrics_summary(self) -> dict[str, Any]:
+        """Computes per-dataset, overall pooled (micro), and overall macro test metrics.
+
+        Returns:
+            dict[str, Any]: Dictionary with keys ``"per_dataset"``
+                (``dict[str, dict[str, Any]]``), ``"overall_pooled"``
+                (``dict[str, Any]``), and ``"overall_macro"`` (``dict[str, Any]``).
+        """
+        overall_pooled = self.metric_collections["test"].compute()
+        per_dataset: dict[str, dict[str, Any]] = {}
+        for ds_name, collection in self.test_metric_collections.items():
+            per_dataset[ds_name] = collection.compute()
+
+        overall_macro: dict[str, Any] = {}
+        if per_dataset:
+            all_keys: list[str] = []
+            for ds_metrics in per_dataset.values():
+                for k in ds_metrics.keys():
+                    if k not in all_keys:
+                        all_keys.append(k)
+
+            for k in all_keys:
+                vals: list[float] = []
+                ref_tensor: torch.Tensor | None = None
+                for ds_metrics in per_dataset.values():
+                    if k not in ds_metrics:
+                        continue
+                    v = ds_metrics[k]
+                    if isinstance(v, torch.Tensor):
+                        if v.numel() == 1:
+                            vals.append(float(v.detach().cpu().item()))
+                            ref_tensor = v
+                    elif isinstance(v, (int, float)):
+                        vals.append(float(v))
+                if vals:
+                    mean_val = sum(vals) / len(vals)
+                    overall_macro[k] = (
+                        torch.tensor(mean_val, dtype=torch.float32, device=ref_tensor.device)
+                        if ref_tensor is not None
+                        else mean_val
+                    )
+
+        return {
+            "per_dataset": per_dataset,
+            "overall_pooled": overall_pooled,
+            "overall_macro": overall_macro,
+        }
+
+    def reset_test_metrics(self) -> None:
+        """Resets both the pooled overall and per-dataset test metric collections."""
+        self.metric_collections["test"].reset()
+        for collection in self.test_metric_collections.values():
+            collection.reset()
 
     def training_step(self, batch: dict, idx: int) -> torch.Tensor:
         """
@@ -342,7 +558,9 @@ class BaseLitModel(pl.LightningModule):
             idx (int): The batch index.
             dataloader_idx (int, optional): The index of the dataloader.
         """
-        _, processed_batch = self._common_step(batch, idx, "val")
+        _, processed_batch = self._common_step(
+            batch, idx, "val", dataloader_idx=dataloader_idx
+        )
         self._metric_step(processed_batch, dataloader_idx, "val")
 
     def test_step(self, batch: dict, idx: int, dataloader_idx: int = 0) -> None:
@@ -354,7 +572,9 @@ class BaseLitModel(pl.LightningModule):
             idx (int): The batch index.
             dataloader_idx (int, optional): The index of the dataloader.
         """
-        _, processed_batch = self._common_step(batch, idx, "test")
+        _, processed_batch = self._common_step(
+            batch, idx, "test", dataloader_idx=dataloader_idx
+        )
         self._metric_step(processed_batch, dataloader_idx, "test")
 
     def predict_step(

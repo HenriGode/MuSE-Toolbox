@@ -82,17 +82,30 @@ def parse_args() -> argparse.Namespace:
         help="Which sanity dataset to test against (default: 'all').",
     )
     parser.add_argument(
-        "--combinator",
-        type=str,
-        default="self_attention",
-        choices=["self_attention", "average", "none"],
-        help="Channel combinator to test (default: 'self_attention').",
-    )
-    parser.add_argument(
         "--feature-extractor",
         type=str,
-        default="wgmsc",
-        help="Feature extractor to use (default: 'wgmsc').",
+        default="log_mel",
+        help="Feature extractor to use (default: 'log_mel').",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="osc",
+        choices=["osc", "osc_fusion"],
+        help="Model config to test (default: 'osc').",
+    )
+    parser.add_argument(
+        "--fusion-mode",
+        type=str,
+        default="early",
+        choices=["early", "film"],
+        help="Fusion mode when --model osc_fusion (default: 'early').",
+    )
+    parser.add_argument(
+        "--num-mics",
+        type=int,
+        default=None,
+        help="Optional fixed microphone count M for flattening spatial features.",
     )
     parser.add_argument(
         "--device",
@@ -127,15 +140,17 @@ def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> dict[st
     return moved
 
 
-def test_cosad_on_dataset(
+def test_osc_on_dataset(
     dataset_name: str,
     sanity_id: str,
-    combinator: str,
     feature_extractor: str,
     device_str: str,
     batch_size: int,
+    model_name: str = "osc",
+    fusion_mode: str = "early",
+    num_mics: int | None = None,
 ) -> dict[str, Any]:
-    """Tests COSADmodule forward pass, loss, backward pass, and metrics."""
+    """Tests OSCmodule forward pass, loss, backward pass, and metrics."""
     log.info(f"\n{'='*75}\n[TESTING MODEL ON DATASET] {dataset_name} (ID: {sanity_id})\n{'='*75}")
 
     device = torch.device(device_str)
@@ -148,13 +163,14 @@ def test_cosad_on_dataset(
         f"dataset.id={sanity_id}",
         "dataset.reset=false",
         f"dataset.batch_size={batch_size}",
-        "model=cosad",
-        f"model/feature_extractor={feature_extractor}",
+        f"model={model_name}",
     ]
-    if combinator == "none":
-        overrides.append("model/channel_combinator=null")
+    if model_name == "osc":
+        overrides.append(f"model/feature_extractor={feature_extractor}")
     else:
-        overrides.append(f"model/channel_combinator={combinator}")
+        overrides.append(f"model.source_count_estimator.fusion_mode={fusion_mode}")
+    if num_mics is not None:
+        overrides.append(f"model.num_mics={num_mics}")
 
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="default", overrides=overrides)
@@ -164,7 +180,7 @@ def test_cosad_on_dataset(
     datamodule = instantiate(cfg.dataset)
     datamodule.setup("fit")
 
-    log.info(f"Instantiating COSADmodule (Extractor: {feature_extractor}, Combinator: {combinator})...")
+    log.info(f"Instantiating OSCmodule (Model: {model_name}, Extractor: {feature_extractor})...")
     model = instantiate(cfg.model)
     model.to(device)
     model.train()
@@ -293,13 +309,15 @@ def main() -> None:
 
     for ds_name, sanity_id in target_datasets:
         try:
-            res = test_cosad_on_dataset(
+            res = test_osc_on_dataset(
                 dataset_name=ds_name,
                 sanity_id=sanity_id,
-                combinator=args.combinator,
                 feature_extractor=args.feature_extractor,
                 device_str=args.device,
                 batch_size=args.batch_size,
+                model_name=args.model,
+                fusion_mode=args.fusion_mode,
+                num_mics=args.num_mics,
             )
             results.append(res)
         except Exception as e:

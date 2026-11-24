@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 class WGMSC_Feature_Extractor(BaseFeatureExtractor):
     """
     Implements the Whitened Generalized Magnitude-Squared Coherence (WGMSC)
-    as a building block for the Coherence-based Source Activity Detector (COSAD).
+    as a building block for Online Source Counting (OSC).
 
     This module processes a multi-channel audio mixture to compute the
     spatial Whitened Generalized Magnitude-Squared Coherence (WGMSC)
@@ -44,7 +44,7 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
         wideband_features: bool = False,
     ) -> None:
         """
-        Initializes the COSAD_WGMSC module.
+        Initializes the WGMSC feature extractor module.
 
         Args:
             transform (STFTtransform): An STFT transformation object to convert
@@ -101,6 +101,10 @@ class WGMSC_Feature_Extractor(BaseFeatureExtractor):
         if self.wideband_features:
             return 2 if self.rev_features else 1
         return 2 * num_freq_bins if self.rev_features else num_freq_bins
+
+    def output_channels(self, num_mics: int | None = None) -> int:
+        """Returns ``1`` since wGMSC condenses all microphones into a single stream."""
+        return 1
 
     def get_valid_feature_mask(self, valid_mics_count: torch.Tensor | None, max_M: int) -> torch.Tensor | None:
         if valid_mics_count is None: return None

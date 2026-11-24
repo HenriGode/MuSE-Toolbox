@@ -157,14 +157,175 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class TransformerEstimator(BaseSourceCountEstimator):
-    """Configurable causal or non-causal Transformer estimator for sound source counting.
+class CatPoolNorm(nn.Module):
+    """Context stacking (cat), temporal subsampling (pool), and frame-wise LayerNorm stem.
 
-    Implements the OSDC Transformer architecture of Cornell et al. (2022) when ``causal=False``
-    (symmetric bidirectional ``cat-pool`` context stacking, temporal subsampling, unmasked
-    bidirectional self-attention, and sequence stretching), and its strictly causal online
-    counterpart when ``causal=True`` (past-only context stacking, upper-triangular causal
-    self-attention masking, and causal zero-order-hold upsampling).
+    Implements the Cornell et al. (2022) cat-pool + LayerNorm input stem for both
+    bidirectional (``causal=False``) and strictly past-only (``causal=True``) modes.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        chunk_size: int = 7,
+        subsample: int = 10,
+        causal: bool = False,
+    ) -> None:
+        """Initializes the CatPoolNorm stem.
+
+        Args:
+            input_dim (int): Flattened per-frame feature dimension (``C * F``).
+            chunk_size (int, optional): Context window parameter ``C`` (bidirectional
+                ``+/-C`` when ``causal=False``, past-only ``T_c`` when ``causal=True``).
+                Defaults to ``7``.
+            subsample (int, optional): Temporal subsampling stride ``S`` / ``T_sub``.
+                Defaults to ``10``.
+            causal (bool, optional): Enables past-only context stacking when ``True``.
+                Defaults to ``False``.
+
+        Raises:
+            ValueError: If ``chunk_size < 0`` or ``subsample < 1``.
+        """
+        super().__init__()
+        if chunk_size < 0:
+            raise ValueError(f"chunk_size must be >= 0, got {chunk_size}")
+        if subsample < 1:
+            raise ValueError(f"subsample must be >= 1, got {subsample}")
+
+        self.input_dim = int(input_dim)
+        self.chunk_size = int(chunk_size)
+        self.subsample = int(subsample)
+        self.causal = bool(causal)
+
+        self.context_frames = (
+            (self.chunk_size + 1) if self.causal else (2 * self.chunk_size + 1)
+        )
+        self.out_dim = self.input_dim * self.context_frames
+        self.norm = nn.LayerNorm(self.out_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Applies context stacking, temporal subsampling, and frame-wise LayerNorm.
+
+        Args:
+            x (torch.Tensor): Flattened input feature sequence of shape
+                ``(B, input_dim, T)``.
+
+        Returns:
+            torch.Tensor: Normalized subsampled context sequence of shape
+                ``(B, out_dim, T')``.
+        """
+        if self.chunk_size > 0:
+            if self.causal:
+                x = torch.nn.functional.pad(x, (self.chunk_size, 0))
+                kernel_len = self.chunk_size + 1
+            else:
+                x = torch.nn.functional.pad(x, (self.chunk_size, self.chunk_size))
+                kernel_len = 2 * self.chunk_size + 1
+
+            x = torch.nn.functional.unfold(
+                x.unsqueeze(-1),
+                kernel_size=(kernel_len, 1),
+                padding=0,
+                stride=(1, 1),
+            )
+
+        if self.subsample > 1:
+            x = x[..., :: self.subsample]
+
+        return self.norm(x.transpose(1, 2)).transpose(1, 2)
+
+
+class FiLMLayer(nn.Module):
+    """Feature-wise Linear Modulation (FiLM) layer for late spatial conditioning.
+
+    Implements Perez et al. (2018) / Cornell et al. (2022) linear affine modulation
+    parameterized around the identity scale:
+
+    .. math::
+        \\mathrm{FiLM}(\\mathbf{h}, \\bar{\\mathbf{u}})
+        = (\\mathbf{1} + \\Delta\\bm{\\gamma}(\\bar{\\mathbf{u}})) \\odot \\mathbf{h}
+          + \\bm{\\beta}(\\bar{\\mathbf{u}})
+
+    Initializes projection weights small (``std = 0.01 / sqrt(cond_dim)``) and biases
+    uniformly in ``[-0.1, 0.1]`` so initial scales are distinct across channels within
+    ``~[0.9, 1.1]`` while ``AdamW`` weight decay regularizes cleanly toward identity.
+    """
+
+    def __init__(self, cond_dim: int, embed_dim: int) -> None:
+        """Initializes the FiLM modulation projections.
+
+        Args:
+            cond_dim (int): Dimensionality of the normalized conditioning stream
+                ``D_cat_spat``.
+            embed_dim (int): Hidden embedding width ``D_emb`` to modulate.
+        """
+        super().__init__()
+        self.cond_dim = int(cond_dim)
+        self.embed_dim = int(embed_dim)
+
+        self.gamma_proj = nn.Conv1d(self.cond_dim, self.embed_dim, kernel_size=1)
+        self.beta_proj = nn.Conv1d(self.cond_dim, self.embed_dim, kernel_size=1)
+
+        weight_std = 0.01 / math.sqrt(max(1, self.cond_dim))
+        nn.init.normal_(self.gamma_proj.weight, mean=0.0, std=weight_std)
+        nn.init.normal_(self.beta_proj.weight, mean=0.0, std=weight_std)
+        nn.init.uniform_(self.gamma_proj.bias, -0.1, 0.1)
+        nn.init.uniform_(self.beta_proj.bias, -0.1, 0.1)
+
+    def forward(self, h: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        """Applies feature-wise scale and shift modulation to hidden states.
+
+        Args:
+            h (torch.Tensor): Hidden Transformer sequence of shape ``(B, embed_dim, T')``.
+            cond (torch.Tensor): Normalized conditioning sequence of shape
+                ``(B, cond_dim, T')``.
+
+        Returns:
+            torch.Tensor: Modulated sequence of shape ``(B, embed_dim, T')``.
+        """
+        scale = 1.0 + self.gamma_proj(cond)
+        shift = self.beta_proj(cond)
+        return scale * h + shift
+
+
+def upsample_logits(
+    logits: torch.Tensor, target_len: int, subsample: int, causal: bool
+) -> torch.Tensor:
+    """Restores subsampled frame logits back to native STFT frame resolution.
+
+    Args:
+        logits (torch.Tensor): Subsampled logit tensor of shape ``(B, num_classes, T')``.
+        target_len (int): Target native STFT frame count ``T_orig``.
+        subsample (int): Temporal subsampling stride ``S`` / ``T_sub``.
+        causal (bool): If ``True``, applies strictly causal zero-order hold; if ``False``,
+            applies non-causal piecewise linear interpolation between anchor frames.
+
+    Returns:
+        torch.Tensor: Full-resolution logit tensor of shape ``(B, num_classes, T_orig)``.
+    """
+    if subsample <= 1:
+        return logits
+
+    if causal:
+        return logits.repeat_interleave(subsample, dim=-1)[..., :target_len]
+
+    t_sub = logits.size(-1)
+    t_idx = torch.arange(target_len, device=logits.device, dtype=torch.long)
+    idx0 = (t_idx // subsample).clamp(max=t_sub - 1)
+    idx1 = (idx0 + 1).clamp(max=t_sub - 1)
+    alpha = (
+        (t_idx % subsample).to(logits.dtype) / float(subsample)
+    ).view(1, 1, target_len)
+    return (1.0 - alpha) * logits[..., idx0] + alpha * logits[..., idx1]
+
+
+class TransformerEstimator(BaseSourceCountEstimator):
+    """Configurable causal or non-causal single-stream Transformer estimator.
+
+    Implements the OSDC Transformer architecture of Cornell et al. (2022) when
+    ``causal=False`` and its strictly causal online counterpart when ``causal=True``.
+    Multi-channel inputs ``(B, C, F, T)`` are flattened in the input pre-stage to
+    ``(B, C * F, T)`` immediately before ``CatPoolNorm``.
     """
 
     def __init__(
@@ -172,6 +333,7 @@ class TransformerEstimator(BaseSourceCountEstimator):
         input_dim: int,
         transform: STFTtransform,
         max_sources: int,
+        num_input_channels: int = 1,
         causal: bool = False,
         chunk_size: int = 7,
         subsample: int = 10,
@@ -182,44 +344,35 @@ class TransformerEstimator(BaseSourceCountEstimator):
         dropout: float = 0.2,
         max_seq_len: int = 5000,
     ) -> None:
-        """Initializes the Transformer source count estimator.
+        """Initializes the single-stream Transformer source count estimator.
 
         Args:
-            input_dim (int): Feature dimensionality per STFT time frame.
+            input_dim (int): Per-channel feature dimensionality ``F`` per STFT frame.
             transform (STFTtransform): STFT transform instance configured for the pipeline.
             max_sources (int): Maximum number of simultaneous active sources.
-            causal (bool, optional): If False, uses Cornell's non-causal bidirectional
-                ``cat-pool`` (``+/-chunk_size`` frames), unmasked self-attention, and
-                piecewise linear interpolation for temporal upsampling. If True, uses
-                strictly causal past-only ``cat-pool`` (``chunk_size`` past frames),
-                causal triangular self-attention masking, and causal zero-order-hold
-                temporal upsampling. Defaults to False.
-            chunk_size (int, optional): Context window parameter (``C`` in Cornell et al. when
-                ``causal=False``; ``T_c`` past frames when ``causal=True``; 0 disables
-                context concatenation). Defaults to 7.
-            subsample (int, optional): Temporal subsampling factor (``S`` / ``T_sub >= 1``;
-                1 disables temporal subsampling). Defaults to 10.
-            embed_dim (int, optional): Transformer bottleneck embedding width (``H``).
-                Defaults to 384.
-            n_heads (int, optional): Number of heads in each self-attention layer.
-                Defaults to 4.
-            ff_inner (int, optional): Hidden width of feed-forward layers. Defaults to 1024.
-            n_layers (int, optional): Number of stacked Transformer encoder blocks (``R``).
-                Defaults to 4.
-            dropout (float, optional): Dropout rate across positional encoding, MHA, and FFN.
-                Defaults to 0.2.
-            max_seq_len (int, optional): Maximum supported sequence length for positional
-                encoding buffers. Defaults to 5000.
-
-        Raises:
-            ValueError: If ``chunk_size < 0`` or ``subsample < 1``.
+            num_input_channels (int, optional): Expected input channel count ``C``
+                flattened at the input pre-stage (``C * F``). Defaults to ``1``.
+            causal (bool, optional): Selects strictly causal mode when ``True`` or
+                Cornell's non-causal baseline when ``False``. Defaults to ``False``.
+            chunk_size (int, optional): Context window parameter ``C`` / ``T_c``.
+                Defaults to ``7``.
+            subsample (int, optional): Temporal subsampling factor ``S`` / ``T_sub``.
+                Defaults to ``10``.
+            embed_dim (int, optional): Transformer bottleneck embedding width ``H``.
+                Defaults to ``384``.
+            n_heads (int, optional): Number of attention heads. Defaults to ``4``.
+            ff_inner (int, optional): Inner FFN expansion width. Defaults to ``1024``.
+            n_layers (int, optional): Number of stacked TE blocks ``R``. Defaults to ``4``.
+            dropout (float, optional): Dropout probability. Defaults to ``0.2``.
+            max_seq_len (int, optional): Maximum supported positional encoding length.
+                Defaults to ``5000``.
         """
-        super().__init__(input_dim, transform, max_sources)
-
-        if chunk_size < 0:
-            raise ValueError(f"chunk_size must be >= 0, got {chunk_size}")
-        if subsample < 1:
-            raise ValueError(f"subsample must be >= 1, got {subsample}")
+        super().__init__(
+            input_dim=input_dim,
+            transform=transform,
+            max_sources=max_sources,
+            num_input_channels=num_input_channels,
+        )
 
         self.causal = bool(causal)
         self.chunk_size = chunk_size
@@ -230,20 +383,20 @@ class TransformerEstimator(BaseSourceCountEstimator):
         self.n_layers = n_layers
         self.dropout = dropout
 
-        # Context multiplier: (T_c + 1) when causal=True, (2*C + 1) when causal=False
-        context_frames = (chunk_size + 1) if self.causal else (2 * chunk_size + 1)
-        in_chan_cat = input_dim * context_frames
-        self.norm_sc = nn.LayerNorm(in_chan_cat)
-        self.bottleneck = nn.Sequential(nn.Conv1d(in_chan_cat, embed_dim, 1))
-
+        self.cat_pool_norm = CatPoolNorm(
+            input_dim=self.flat_input_dim,
+            chunk_size=chunk_size,
+            subsample=subsample,
+            causal=self.causal,
+        )
+        self.bottleneck = nn.Sequential(
+            nn.Conv1d(self.cat_pool_norm.out_dim, embed_dim, 1)
+        )
         self.pos_encs = PositionalEncoding(embed_dim, dropout, max_len=max_seq_len)
-
-        # Output projection to max_sources + 1 classes (0 .. max_sources active sources)
         self.output = nn.Conv1d(embed_dim, max_sources + 1, 1)
 
-        self.layers = nn.ModuleList()
-        for _ in range(n_layers):
-            self.layers.append(
+        self.layers = nn.ModuleList(
+            [
                 nn.ModuleList(
                     [
                         MHALayer(
@@ -255,7 +408,9 @@ class TransformerEstimator(BaseSourceCountEstimator):
                         FF(embed_dim, ff_inner, dropout=dropout),
                     ]
                 )
-            )
+                for _ in range(n_layers)
+            ]
+        )
 
     def get_config(self) -> Dict[str, Any]:
         """Returns a dictionary of estimator hyperparameters for logging and checkpointing.
@@ -274,67 +429,43 @@ class TransformerEstimator(BaseSourceCountEstimator):
             "n_layers": self.n_layers,
             "dropout": self.dropout,
             "input_dim": self.input_dim,
+            "num_input_channels": self.num_input_channels,
         }
 
     def _verbose_parameters(self, indent: str = "") -> None:
         """Logs a formatted summary of estimator hyperparameters.
 
         Args:
-            indent (str, optional): Leading indentation string for log messages. Defaults to "".
+            indent (str, optional): Leading indentation string for log messages. Defaults to ``""``.
         """
         super()._verbose_parameters(indent)
+        log.info(
+            f"{indent}  Input Channels x Feature Dim: "
+            f"{self.num_input_channels} x {self.input_dim} = {self.flat_input_dim}"
+        )
         log.info(f"{indent}  Causal Mode: {self.causal}")
-        if self.causal:
-            log.info(
-                f"{indent}  Chunk Size (Past Context Frames T_c): {self.chunk_size} "
-                f"(Total Stacked: {self.chunk_size + 1})"
-            )
-        else:
-            log.info(
-                f"{indent}  Chunk Size (Bidirectional Context +/-C): {self.chunk_size} "
-                f"(Total Stacked: {2 * self.chunk_size + 1})"
-            )
+        log.info(
+            f"{indent}  Chunk Size: {self.chunk_size} "
+            f"(Total Stacked: {self.cat_pool_norm.context_frames})"
+        )
         log.info(f"{indent}  Subsample Factor: {self.subsample}")
         log.info(f"{indent}  Embed Dim: {self.embed_dim}")
         log.info(f"{indent}  Num Heads: {self.n_heads}")
         log.info(f"{indent}  Num Layers: {self.n_layers}")
 
     def forward_tensor(self, features: torch.Tensor) -> torch.Tensor:
-        """Processes input STFT features through the Transformer (causal or Cornell baseline).
+        """Processes flattened single-stream STFT features through the Transformer.
 
         Args:
-            features (torch.Tensor): Input feature tensor of shape ``(B, input_dim, T)``.
+            features (torch.Tensor): Flattened feature tensor of shape
+                ``(B, C * F, T)``.
 
         Returns:
             torch.Tensor: Class logits of shape ``(B, T, max_sources + 1)``.
         """
-        T_orig = features.size(-1)
-        x = features
-
-        # Context concatenation (cat)
-        if self.chunk_size > 0:
-            if self.causal:
-                # Pad strictly in the past by chunk_size frames (zero future look-ahead)
-                x = torch.nn.functional.pad(x, (self.chunk_size, 0))
-                kernel_len = self.chunk_size + 1
-            else:
-                # Pad symmetrically in past and future by chunk_size frames (Cornell cat-pool)
-                x = torch.nn.functional.pad(x, (self.chunk_size, self.chunk_size))
-                kernel_len = 2 * self.chunk_size + 1
-
-            x = torch.nn.functional.unfold(
-                x.unsqueeze(-1),
-                kernel_size=(kernel_len, 1),
-                padding=0,
-                stride=(1, 1),
-            )  # Output is (B, input_dim * kernel_len, T_orig)
-
-        # Temporal subsampling (pool) at stride S / T_sub
-        if self.subsample > 1:
-            x = x[..., :: self.subsample]  # (B, in_chan_cat, T')
-
-        x = self.norm_sc(x.transpose(1, 2)).transpose(1, 2)
-        x = self.bottleneck(x)  # (B, embed_dim, T')
+        t_orig = features.size(-1)
+        x = self.cat_pool_norm(features)
+        x = self.bottleneck(x)
         x = self.pos_encs(x)
 
         for layer_block in self.layers:
@@ -343,23 +474,281 @@ class TransformerEstimator(BaseSourceCountEstimator):
             x = mha(x)
             x = ff(x)
 
-        logits = self.output(x)  # (B, max_sources + 1, T')
+        logits = self.output(x)
+        logits = upsample_logits(
+            logits, target_len=t_orig, subsample=self.subsample, causal=self.causal
+        )
+        return logits.permute(0, 2, 1)
 
-        # Upsample by subsample factor back to native STFT frame resolution T_orig
-        if self.subsample > 1:
-            if self.causal:
-                # Strictly causal zero-order hold: l_t = l_sub[floor(t / S)] (zero future look-ahead)
-                logits = logits.repeat_interleave(self.subsample, dim=-1)[..., :T_orig]
-            else:
-                # Non-causal piecewise linear interpolation between subsampled anchor frames k * S
-                t_sub = logits.size(-1)
-                t_idx = torch.arange(T_orig, device=logits.device, dtype=torch.long)
-                idx0 = (t_idx // self.subsample).clamp(max=t_sub - 1)
-                idx1 = (idx0 + 1).clamp(max=t_sub - 1)
-                alpha = (
-                    (t_idx % self.subsample).to(logits.dtype) / float(self.subsample)
-                ).view(1, 1, T_orig)
-                logits = (1.0 - alpha) * logits[..., idx0] + alpha * logits[..., idx1]
 
-        # Permute for output: (B, max_sources + 1, T_orig) -> (B, T_orig, max_sources + 1)
+class FusionTransformerEstimator(BaseSourceCountEstimator):
+    """Dual-stream Transformer implementing Cornell et al. (2022) Early and Late FiLM fusion.
+
+    Supports:
+    - ``fusion_mode="early"`` (Cornell Fig. 3a): separate ``CatPoolNorm`` stems for
+      the primary spectral stream and flattened spatial stream, concatenated prior
+      to the bottleneck ``Conv1d(1x1)`` and sinusoidal positional encoding.
+    - ``fusion_mode="film"`` (Cornell Fig. 3b): primary spectral stream mapped via
+      ``CatPoolNorm -> Conv1d(1x1) -> PE``, while the separately cat-pooled and
+      normalized spatial stream modulates hidden states via per-layer ``FiLMLayer``
+      blocks immediately before every Transformer Encoder block.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        cond_input_dim: int,
+        transform: STFTtransform,
+        max_sources: int,
+        num_input_channels: int = 1,
+        cond_num_channels: int = 1,
+        fusion_mode: str = "early",
+        causal: bool = False,
+        chunk_size: int = 7,
+        subsample: int = 10,
+        embed_dim: int = 384,
+        n_heads: int = 4,
+        ff_inner: int = 1024,
+        n_layers: int = 4,
+        dropout: float = 0.2,
+        max_seq_len: int = 5000,
+    ) -> None:
+        """Initializes the dual-stream Early/Late-FiLM Transformer estimator.
+
+        Args:
+            input_dim (int): Per-channel feature dimension ``F_spec`` of the primary stream.
+            cond_input_dim (int): Per-channel feature dimension ``F_spat`` of the spatial
+                conditioning stream.
+            transform (STFTtransform): STFT transform instance configured for the pipeline.
+            max_sources (int): Maximum number of simultaneous active sources.
+            num_input_channels (int, optional): Channel count ``C_spec`` of the primary
+                stream flattened before ``CatPoolNorm``. Defaults to ``1``.
+            cond_num_channels (int, optional): Channel count ``C_spat`` (e.g. ``P`` pairs)
+                of the spatial stream flattened before ``CatPoolNorm``. Defaults to ``1``.
+            fusion_mode (str, optional): Fusion scheme, either ``"early"`` (input
+                concatenation after separate ``CatPoolNorm``) or ``"film"`` (layer-wise
+                FiLM conditioning before each TE block). Defaults to ``"early"``.
+            causal (bool, optional): Selects strictly causal mode when ``True`` or
+                Cornell's non-causal baseline when ``False``. Defaults to ``False``.
+            chunk_size (int, optional): Context window parameter ``C`` / ``T_c``.
+                Defaults to ``7``.
+            subsample (int, optional): Temporal subsampling factor ``S`` / ``T_sub``.
+                Defaults to ``10``.
+            embed_dim (int, optional): Transformer embedding width ``H``. Defaults to ``384``.
+            n_heads (int, optional): Number of attention heads. Defaults to ``4``.
+            ff_inner (int, optional): Inner FFN expansion width. Defaults to ``1024``.
+            n_layers (int, optional): Number of stacked TE blocks ``R``. Defaults to ``4``.
+            dropout (float, optional): Dropout probability. Defaults to ``0.2``.
+            max_seq_len (int, optional): Maximum positional encoding length.
+                Defaults to ``5000``.
+
+        Raises:
+            ValueError: If ``fusion_mode`` is not ``"early"`` or ``"film"``, or if
+                ``cond_num_channels < 1``.
+        """
+        super().__init__(
+            input_dim=input_dim,
+            transform=transform,
+            max_sources=max_sources,
+            num_input_channels=num_input_channels,
+        )
+        mode = fusion_mode.lower()
+        if mode not in ("early", "film"):
+            raise ValueError(
+                f"Invalid fusion_mode '{fusion_mode}'. Must be 'early' or 'film'."
+            )
+        if cond_num_channels < 1:
+            raise ValueError(
+                f"cond_num_channels must be >= 1, got {cond_num_channels}."
+            )
+
+        self.cond_input_dim = int(cond_input_dim)
+        self.cond_num_channels = int(cond_num_channels)
+        self.cond_flat_dim = self.cond_input_dim * self.cond_num_channels
+        self.fusion_mode = mode
+        self.causal = bool(causal)
+        self.chunk_size = chunk_size
+        self.subsample = subsample
+        self.embed_dim = embed_dim
+        self.n_heads = n_heads
+        self.ff_inner = ff_inner
+        self.n_layers = n_layers
+        self.dropout = dropout
+
+        self.spec_stem = CatPoolNorm(
+            input_dim=self.flat_input_dim,
+            chunk_size=chunk_size,
+            subsample=subsample,
+            causal=self.causal,
+        )
+        self.cond_stem = CatPoolNorm(
+            input_dim=self.cond_flat_dim,
+            chunk_size=chunk_size,
+            subsample=subsample,
+            causal=self.causal,
+        )
+
+        if self.fusion_mode == "early":
+            self.bottleneck = nn.Sequential(
+                nn.Conv1d(
+                    self.spec_stem.out_dim + self.cond_stem.out_dim,
+                    embed_dim,
+                    1,
+                )
+            )
+            self.film_layers: nn.ModuleList | None = None
+        else:
+            self.bottleneck = nn.Sequential(
+                nn.Conv1d(self.spec_stem.out_dim, embed_dim, 1)
+            )
+            self.film_layers = nn.ModuleList(
+                [
+                    FiLMLayer(cond_dim=self.cond_stem.out_dim, embed_dim=embed_dim)
+                    for _ in range(n_layers)
+                ]
+            )
+
+        self.pos_encs = PositionalEncoding(embed_dim, dropout, max_len=max_seq_len)
+        self.output = nn.Conv1d(embed_dim, max_sources + 1, 1)
+        self.layers = nn.ModuleList(
+            [
+                nn.ModuleList(
+                    [
+                        MHALayer(
+                            embed_dim,
+                            n_heads,
+                            dropout=dropout,
+                            causal=self.causal,
+                        ),
+                        FF(embed_dim, ff_inner, dropout=dropout),
+                    ]
+                )
+                for _ in range(n_layers)
+            ]
+        )
+
+    def get_config(self) -> Dict[str, Any]:
+        """Returns a dictionary of fusion estimator hyperparameters.
+
+        Returns:
+            Dict[str, Any]: Serialized configuration dictionary.
+        """
+        return {
+            "max_sources": self.max_sources,
+            "fusion_mode": self.fusion_mode,
+            "causal": self.causal,
+            "chunk_size": self.chunk_size,
+            "subsample": self.subsample,
+            "embed_dim": self.embed_dim,
+            "n_heads": self.n_heads,
+            "ff_inner": self.ff_inner,
+            "n_layers": self.n_layers,
+            "dropout": self.dropout,
+            "input_dim": self.input_dim,
+            "num_input_channels": self.num_input_channels,
+            "cond_input_dim": self.cond_input_dim,
+            "cond_num_channels": self.cond_num_channels,
+        }
+
+    def _verbose_parameters(self, indent: str = "") -> None:
+        """Logs a formatted summary of fusion estimator hyperparameters.
+
+        Args:
+            indent (str, optional): Leading indentation string. Defaults to ``""``.
+        """
+        super()._verbose_parameters(indent)
+        log.info(f"{indent}  Fusion Mode: {self.fusion_mode}")
+        log.info(
+            f"{indent}  Primary Stream: "
+            f"{self.num_input_channels} x {self.input_dim} = {self.flat_input_dim}"
+        )
+        log.info(
+            f"{indent}  Conditioning Stream: "
+            f"{self.cond_num_channels} x {self.cond_input_dim} = {self.cond_flat_dim}"
+        )
+        log.info(f"{indent}  Causal Mode: {self.causal}")
+        log.info(
+            f"{indent}  Chunk Size: {self.chunk_size} "
+            f"(Total Stacked: {self.spec_stem.context_frames})"
+        )
+        log.info(f"{indent}  Subsample Factor: {self.subsample}")
+        log.info(f"{indent}  Embed Dim: {self.embed_dim}")
+        log.info(f"{indent}  Num Heads: {self.n_heads}")
+        log.info(f"{indent}  Num Layers: {self.n_layers}")
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        cond_features: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Flattens primary and conditioning streams and executes Early or Late FiLM fusion.
+
+        Args:
+            features (torch.Tensor): Primary stream tensor of shape
+                ``(B, C_spec, F_spec, T)`` or ``(B, C_spec * F_spec, T)``.
+            cond_features (torch.Tensor | None): Spatial conditioning stream tensor of
+                shape ``(B, C_spat, F_spat, T)`` or ``(B, C_spat * F_spat, T)``.
+
+        Returns:
+            torch.Tensor: Source activity logits of shape ``(B, T, max_sources + 1)``.
+
+        Raises:
+            ValueError: If ``cond_features`` is ``None`` or channel counts mismatch.
+        """
+        if cond_features is None:
+            raise ValueError(
+                "FusionTransformerEstimator requires `cond_features` in forward()."
+            )
+        x_spec = self._flatten_channel_features(
+            features, self.num_input_channels, stream_name="features"
+        )
+        x_cond = self._flatten_channel_features(
+            cond_features, self.cond_num_channels, stream_name="cond_features"
+        )
+        return self.forward_dual(x_spec, x_cond)
+
+    def forward_tensor(self, features: torch.Tensor) -> torch.Tensor:
+        """Not supported for dual-stream fusion; use ``forward(features, cond_features)``."""
+        raise NotImplementedError(
+            "FusionTransformerEstimator requires both primary and conditioning streams; "
+            "call forward(features, cond_features) instead."
+        )
+
+    def forward_dual(
+        self, x_spec: torch.Tensor, x_cond: torch.Tensor
+    ) -> torch.Tensor:
+        """Processes flattened spectral and spatial streams through Early or Late FiLM fusion.
+
+        Args:
+            x_spec (torch.Tensor): Flattened primary stream ``(B, C_spec * F_spec, T)``.
+            x_cond (torch.Tensor): Flattened conditioning stream ``(B, C_spat * F_spat, T)``.
+
+        Returns:
+            torch.Tensor: Source activity logits of shape ``(B, T, max_sources + 1)``.
+        """
+        t_orig = x_spec.size(-1)
+        u_spec = self.spec_stem(x_spec)
+        u_cond = self.cond_stem(x_cond)
+
+        if self.fusion_mode == "early":
+            h = self.bottleneck(torch.cat([u_spec, u_cond], dim=1))
+            h = self.pos_encs(h)
+            for layer_block in self.layers:
+                mha = layer_block[0]
+                ff = layer_block[1]
+                h = ff(mha(h))
+        else:
+            assert self.film_layers is not None
+            h = self.bottleneck(u_spec)
+            h = self.pos_encs(h)
+            for film, layer_block in zip(self.film_layers, self.layers):
+                mha = layer_block[0]
+                ff = layer_block[1]
+                h = film(h, u_cond)
+                h = ff(mha(h))
+
+        logits = self.output(h)
+        logits = upsample_logits(
+            logits, target_len=t_orig, subsample=self.subsample, causal=self.causal
+        )
         return logits.permute(0, 2, 1)

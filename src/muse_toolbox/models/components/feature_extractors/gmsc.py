@@ -54,6 +54,10 @@ class GMSC_Feature_Extractor(BaseFeatureExtractor):
     def feature_dim(self) -> int:
         return self.transform.num_freq_bins
 
+    def output_channels(self, num_mics: int | None = None) -> int:
+        """Returns ``1`` since GMSC condenses all microphones into a single stream."""
+        return 1
+
     def get_config(self) -> dict[str, Any]:
         """
         Returns the configuration of the feature extractor.

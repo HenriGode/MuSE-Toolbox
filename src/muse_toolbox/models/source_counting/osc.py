@@ -1,33 +1,34 @@
+import functools
+import inspect
 import logging
 from typing import Any
+
 import torch
-import functools
 
 from muse_toolbox.models.base_model import BaseLitModel
 from muse_toolbox.models.components.feature_extractors import BaseFeatureExtractor
 from muse_toolbox.models.source_counting.estimators import BaseSourceCountEstimator
-from muse_toolbox.models.components.channel_combinator.base_channel_combinator import BaseChannelCombinator
 from muse_toolbox.utils import STFTtransform
 
 log = logging.getLogger(__name__)
 
 
-class COSADmodule(BaseLitModel):
-    """
-    A PyTorch Lightning module for Continuous Online Source Activity Detection (COSAD).
+class OSCmodule(BaseLitModel):
+    """PyTorch Lightning module for Online Source Counting (OSC).
 
-    This module orchestrates a two-stage pipeline:
-    1. Feature Extraction: Processes raw STFT input into discriminative features.
-    2. Source Count Estimation: Uses the extracted features to estimate the number of 
-       active sources over time.
+    Supports single-stream feature extraction (e.g., Log-Mel, flattened CSIPD, wGMSC)
+    and dual-stream spectral + spatial conditioning extraction (e.g., Cornell et al.
+    Early Fusion and Late FiLM Fusion), sharing a single STFT computation when both
+    extractors operate in the STFT domain.
     """
 
     def __init__(
         self,
         transform: STFTtransform,
-        feature_extractor: BaseFeatureExtractor,
-        source_count_estimator: BaseSourceCountEstimator,
-        channel_combinator: BaseChannelCombinator | Any | None = None,
+        feature_extractor: BaseFeatureExtractor | Any,
+        source_count_estimator: BaseSourceCountEstimator | Any,
+        cond_feature_extractor: BaseFeatureExtractor | Any | None = None,
+        num_mics: int | None = None,
         batch_size: int = 1,
         loss_config: dict[str, Any] = {"CrossEntropy": None},
         optimizer_config: dict[str, Any] | None = None,
@@ -40,53 +41,83 @@ class COSADmodule(BaseLitModel):
         permute_channels: bool = True,
         eval_stitch_mode: str = "auto",
     ) -> None:
-        """
-        Initializes the COSADmodule.
+        """Initializes the OSCmodule.
 
         Args:
-            transform (utilities.STFTtransform): The STFT configuration for transforming audio signals.
-            feature_extractor (BaseFeatureExtractor): Module responsible for extracting features from the STFT.
-            source_count_estimator (BaseSourceCountEstimator): Module responsible for predicting source activity.
-            channel_combinator (Optional[BaseChannelCombinator]): Module for condensing channel features.
-            batch_size (int): Batch size for processing.
-            loss_config (dict[str, Any]): Configuration for the loss function.
-            optimizer_config (Optional[dict[str, Any]]): Configuration for the optimizer.
-            lr_scheduler_config (Optional[dict[str, Any]]): Configuration for the learning rate scheduler.
-            metrics_train (Optional[dict[str, Any]]): Metrics to track during training.
-            metrics_val (Optional[dict[str, Any]]): Metrics to track during validation.
-            metrics_test (Optional[dict[str, Any]]): Metrics to track during testing.
-            compute_complexity_metrics (bool): Whether to profile computational complexity.
-            check_causality (bool): Whether to enforce causality checks on the model.
-            permute_channels (bool): If True, randomly permutes channels during training.
-            eval_stitch_mode (str): Sliding-window evaluation stitching strategy across
-                overlapping chunks (`"auto"`, `"overlap_avg"`, `"causal_burnin"`, or `"none"`).
-                When set to `"auto"` (default), uses `"causal_burnin"` if
-                `source_count_estimator.causal` is `True`, and `"overlap_avg"` (Cornell et al.'s
-                overlapping sliding-window logit averaging) when `causal` is `False`.
+            transform (STFTtransform): STFT configuration for transforming audio signals.
+            feature_extractor (BaseFeatureExtractor | functools.partial): Primary feature
+                extractor module (or Hydra partial accepting ``transform``).
+            source_count_estimator (BaseSourceCountEstimator | functools.partial): Source
+                count estimator module (or Hydra partial).
+            cond_feature_extractor (BaseFeatureExtractor | functools.partial | None, optional):
+                Optional spatial conditioning feature extractor for dual-stream fusion
+                baselines (Early Fusion or Late FiLM). Defaults to ``None``.
+            num_mics (int | None, optional): Fixed microphone count ``M`` used by fixed-array
+                baseline estimators to resolve ``M``-dependent channel counts (such as
+                ``P = M*(M-1)//2`` pairs for CSIPD) at initialization time. Not required
+                for ``C = 1`` extractors (e.g. single-channel Log-Mel, GMSC, wGMSC).
+                Defaults to ``None``.
+            batch_size (int, optional): Batch size for logging. Defaults to ``1``.
+            loss_config (dict[str, Any], optional): Loss function configuration.
+            optimizer_config (dict[str, Any] | None, optional): Optimizer configuration.
+            lr_scheduler_config (dict[str, Any] | None, optional): LR scheduler configuration.
+            metrics_train (dict[str, Any] | None, optional): Training metrics config.
+            metrics_val (dict[str, Any] | None, optional): Validation metrics config.
+            metrics_test (dict[str, Any] | None, optional): Test metrics config.
+            compute_complexity_metrics (bool, optional): Enable complexity profiling.
+            check_causality (bool, optional): Enable causality verification checks.
+            permute_channels (bool, optional): Randomly permute microphone channels
+                during training when ``True``. Defaults to ``True``.
+            eval_stitch_mode (str, optional): Sliding-window stitching mode
+                (``"auto"``, ``"overlap_avg"``, ``"causal_burnin"``, or ``"none"``).
         """
         if isinstance(feature_extractor, functools.partial):
             feature_extractor = feature_extractor(transform=transform)
-            
-        if isinstance(channel_combinator, functools.partial):
-            channel_combinator = channel_combinator(
-                input_feature_dim=feature_extractor.feature_dim
-            )
-            
-        estimator_input_dim = feature_extractor.feature_dim
-        # If a channel combinator is present, it handles channel condensation but preserves feature dim
-        # (or provides an explicit out_feature_dim if it changes it).
-        if channel_combinator is not None:
-            if hasattr(channel_combinator, 'out_feature_dim'):
-                estimator_input_dim = channel_combinator.out_feature_dim
+
+        if isinstance(cond_feature_extractor, functools.partial):
+            cond_feature_extractor = cond_feature_extractor(transform=transform)
 
         if isinstance(source_count_estimator, functools.partial):
-            source_count_estimator = source_count_estimator(
-                input_dim=estimator_input_dim,
-                transform=transform
+            est_sig = inspect.signature(source_count_estimator.func.__init__)
+            est_params = est_sig.parameters
+            est_kwargs: dict[str, Any] = {
+                "input_dim": feature_extractor.feature_dim,
+                "transform": transform,
+            }
+            if "num_input_channels" in est_params:
+                est_kwargs["num_input_channels"] = feature_extractor.output_channels(
+                    num_mics
+                )
+            elif num_mics is not None:
+                in_channels = feature_extractor.output_channels(num_mics)
+                est_kwargs["input_dim"] = feature_extractor.feature_dim * in_channels
+
+            if cond_feature_extractor is not None:
+                if "cond_input_dim" not in est_params:
+                    raise ValueError(
+                        f"{source_count_estimator.func.__name__} does not accept `cond_input_dim`. "
+                        "Use FusionTransformerEstimator when `cond_feature_extractor` is configured."
+                    )
+                est_kwargs["cond_input_dim"] = cond_feature_extractor.feature_dim
+                if "cond_num_channels" in est_params:
+                    est_kwargs["cond_num_channels"] = (
+                        cond_feature_extractor.output_channels(num_mics)
+                    )
+
+            source_count_estimator = source_count_estimator(**est_kwargs)
+
+        model_tag = (
+            f"OSC_{feature_extractor.__class__.__name__}"
+            + (
+                f"+{cond_feature_extractor.__class__.__name__}"
+                if cond_feature_extractor is not None
+                else ""
             )
-            
+            + f"_{source_count_estimator.__class__.__name__}"
+        )
+
         super().__init__(
-            model_name=f"COSAD_{feature_extractor.__class__.__name__}_{source_count_estimator.__class__.__name__}",
+            model_name=model_tag,
             batch_size=batch_size,
             loss_config=loss_config,
             optimizer_config=optimizer_config,
@@ -100,11 +131,10 @@ class COSADmodule(BaseLitModel):
         )
 
         self.transform = transform
-
-        # Assign injected dependencies
         self.feature_extractor = feature_extractor
-        self.channel_combinator = channel_combinator
+        self.cond_feature_extractor = cond_feature_extractor
         self.source_count_estimator = source_count_estimator
+        self.num_mics = num_mics
         self.permute_channels = permute_channels
         self.eval_stitch_mode = eval_stitch_mode
         self._eval_overlap_state: dict[str, dict[str, Any] | None] = {
@@ -114,32 +144,37 @@ class COSADmodule(BaseLitModel):
 
         self.num_params = self.count_parameters()
 
-        # Save hyperparameters, but ignore the complex objects (modules)
-        # as they are part of the model structure, not just config params.
         self.save_hyperparameters(
-            ignore=["feature_extractor", "source_count_estimator", "channel_combinator", "transform"]
+            ignore=[
+                "feature_extractor",
+                "cond_feature_extractor",
+                "source_count_estimator",
+                "transform",
+            ]
         )
 
-        # Manually save the configs of the injected dependencies
         self.hparams["feature_config"] = self.feature_extractor.get_config()
-        if self.channel_combinator is not None and hasattr(self.channel_combinator, "get_config"):
-            self.hparams["combinator_config"] = self.channel_combinator.get_config()
+        if self.cond_feature_extractor is not None:
+            self.hparams["cond_feature_config"] = (
+                self.cond_feature_extractor.get_config()
+            )
         self.hparams["estimator_config"] = self.source_count_estimator.get_config()
         self.hparams["transform_config"] = self.transform.get_config()
 
         self._verbose_parameters()
 
     def _verbose_parameters(self, indent: str = "") -> None:
-        """
-        Logs the parameters of the module and its sub-components in a structured format.
+        """Logs the parameters of the module and its sub-components.
 
         Args:
-            indent (str): A string to prepend to each log line for indentation.
+            indent (str, optional): Leading indentation string. Defaults to ``""``.
         """
         log.info(f"{indent}{self.__class__.__name__} Parameters:")
         log.info(f"{indent}  Batch Size: {self.batch_size}")
+        if self.num_mics is not None:
+            log.info(f"{indent}  Configured num_mics: {self.num_mics}")
         log.info(f"{indent}  Test Metrics: {self.metrics_test}")
-        
+
         if hasattr(self.transform, "_verbose_parameters"):
             self.transform._verbose_parameters(indent=indent + "  ")
 
@@ -149,57 +184,80 @@ class COSADmodule(BaseLitModel):
             log.info(
                 f"{indent}  Feature Extractor: {self.feature_extractor.__class__.__name__}"
             )
-            
-        if self.channel_combinator is not None:
-            if hasattr(self.channel_combinator, "_verbose_parameters"):
-                self.channel_combinator._verbose_parameters(indent=indent + "  ")
+
+        if self.cond_feature_extractor is not None:
+            if hasattr(self.cond_feature_extractor, "_verbose_parameters"):
+                self.cond_feature_extractor._verbose_parameters(indent=indent + "  ")
             else:
                 log.info(
-                    f"{indent}  Channel Combinator: {self.channel_combinator.__class__.__name__}"
+                    f"{indent}  Conditioning Feature Extractor: "
+                    f"{self.cond_feature_extractor.__class__.__name__}"
                 )
 
         if hasattr(self.source_count_estimator, "_verbose_parameters"):
             self.source_count_estimator._verbose_parameters(indent=indent + "  ")
         else:
             log.info(
-                f"{indent}  Source Count Estimator: {self.source_count_estimator.__class__.__name__}"
+                f"{indent}  Source Count Estimator: "
+                f"{self.source_count_estimator.__class__.__name__}"
             )
 
     def forward(self, batch: dict) -> dict:
-        """
-        Executes the forward pass of the COSAD pipeline using raw dictionary batches.
-        """
+        """Executes the forward pass of the OSC pipeline on raw audio dictionary batches."""
         x = batch["input"]
         valid_mics = batch.get("mic_lengths", None)
-        
-        # 0. Data Augmentation
+
+        # 0. Data Augmentation (shared across primary & conditioning streams)
         if self.permute_channels and self.training:
-            B, M, T = x.shape
+            x = x.clone()
+            B, M, _ = x.shape
             for i in range(B):
-                m_len = valid_mics[i].item() if valid_mics is not None else M
+                m_len = int(valid_mics[i].item()) if valid_mics is not None else M
                 if m_len > 1:
                     perm = torch.randperm(m_len, device=x.device)
                     x[i, :m_len, :] = x[i, perm, :]
 
-        # 1. Feature Extraction
-        # Note: the feature extractor is responsible for calling self.transform() internally if it uses STFT.
-        features = self.feature_extractor(x, valid_mics=valid_mics)
-        
-        # 1.5 Generate Valid Feature Mask
-        feature_mask = self.feature_extractor.get_valid_feature_mask(valid_mics, max_M=x.shape[1])
-        batch["feature_mask"] = feature_mask
-        
-        # 2. Channel Combination (Optional)
-        if self.channel_combinator is not None:
-            features = self.channel_combinator(features, feature_mask=feature_mask)
+        # 1. Feature Extraction (compute shared STFT once when both extractors use STFT)
+        cond_features: torch.Tensor | None = None
+        if (
+            self.cond_feature_extractor is not None
+            and self.feature_extractor.uses_stft
+            and self.cond_feature_extractor.uses_stft
+        ):
+            stft = self.transform.encode(x)
+            features = self.feature_extractor(
+                stft, input_type="stft", valid_mics=valid_mics
+            )
+            cond_features = self.cond_feature_extractor(
+                stft, input_type="stft", valid_mics=valid_mics
+            )
+        else:
+            features = self.feature_extractor(x, valid_mics=valid_mics)
+            if self.cond_feature_extractor is not None:
+                cond_features = self.cond_feature_extractor(x, valid_mics=valid_mics)
 
-        # 3. Detection
-        estimates = self.source_count_estimator(features)
-        
+        batch["feature_mask"] = self.feature_extractor.get_valid_feature_mask(
+            valid_mics, max_M=x.shape[1]
+        )
+        if self.cond_feature_extractor is not None:
+            batch["cond_feature_mask"] = (
+                self.cond_feature_extractor.get_valid_feature_mask(
+                    valid_mics, max_M=x.shape[1]
+                )
+            )
+
+        # 2. Source Count Estimation
+        if cond_features is not None:
+            estimates = self.source_count_estimator(
+                features, cond_features=cond_features
+            )
+        else:
+            estimates = self.source_count_estimator(features)
+
         return {
             "estimates": estimates,
             "time_lengths": batch["time_lengths"],
-            "meta": batch["meta"]
+            "meta": batch["meta"],
         }
 
     def get_active_eval_stitch_mode(self) -> str:
@@ -231,7 +289,10 @@ class COSADmodule(BaseLitModel):
         self._eval_overlap_state["test"] = None
 
     def _prepare_eval_estimates_and_targets(
-        self, processed_batch: dict[str, Any], step_type: str
+        self,
+        processed_batch: dict[str, Any],
+        step_type: str,
+        dataloader_idx: int = 0,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]:
         """Stitches or trims overlapping sliding-window chunks during evaluation.
 
@@ -269,7 +330,7 @@ class COSADmodule(BaseLitModel):
         )
         if stitch_mode == "none" or not has_grid_meta:
             return super()._prepare_eval_estimates_and_targets(
-                processed_batch, step_type
+                processed_batch, step_type, dataloader_idx=dataloader_idx
             )
 
         meta_dict = meta.copy()
@@ -325,6 +386,7 @@ class COSADmodule(BaseLitModel):
                 state = self._eval_overlap_state.get(step_type)
                 is_consecutive = (
                     state is not None
+                    and state.get("dataloader_idx", 0) == dataloader_idx
                     and state["recording_id"] == rec_id
                     and state["next_start_sample"] == start_sample
                     and state["tail_logits"].shape[0] == ov_frames
@@ -363,6 +425,7 @@ class COSADmodule(BaseLitModel):
                         tgt_i[hop_frames : hop_frames + ov_frames].detach().clone()
                     )
                     self._eval_overlap_state[step_type] = {
+                        "dataloader_idx": dataloader_idx,
                         "recording_id": rec_id,
                         "next_start_sample": start_sample + hop_samples,
                         "tail_logits": new_tail_logits,

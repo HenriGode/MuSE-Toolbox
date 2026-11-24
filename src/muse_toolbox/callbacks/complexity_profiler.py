@@ -4,7 +4,6 @@ import logging
 import torch
 import wandb
 from lightning.pytorch import Callback, Trainer, LightningModule
-from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 from muse_toolbox.utils import format_flops, format_memory, format_parameters, format_time
 
 log = logging.getLogger(__name__)
@@ -57,9 +56,9 @@ class ComplexityProfilerCallback(Callback):
 
         # Basic Model & Input Setup
         total_params = sum(p.numel() for p in pl_module.parameters() if p.requires_grad)
-        num_channels = 2
-        fs = getattr(pl_module, "fs", 16000)
-        input_len = 1 * fs # 1 second signal
+        num_channels = int(getattr(pl_module, "num_mics", None) or 2)
+        fs = int(getattr(pl_module, "fs", 16000))
+        input_len = 1 * fs  # 1 second signal
 
         schedule = torch.profiler.schedule(
             wait=1, warmup=self.warmup_steps, active=self.active_steps, repeat=1
@@ -74,7 +73,13 @@ class ComplexityProfilerCallback(Callback):
         pl_module.to("cpu")
 
         # Pre-allocate random tensor to avoid profiling randn overhead
-        cpu_audio = torch.randn(num_channels, input_len, device="cpu")
+        cpu_audio = torch.randn(1, num_channels, input_len, device="cpu")
+        cpu_batch = {
+            "input": cpu_audio,
+            "mic_lengths": torch.tensor([num_channels], dtype=torch.long, device="cpu"),
+            "time_lengths": torch.tensor([input_len], dtype=torch.long, device="cpu"),
+            "meta": {},
+        }
 
         with torch.no_grad():
             with torch.profiler.profile(
@@ -85,9 +90,7 @@ class ComplexityProfilerCallback(Callback):
                 record_shapes=False,
             ) as prof_cpu:
                 for _ in range(1 + self.warmup_steps + self.active_steps):
-                    batch = HeterogeneousBatch(raw_audio=[cpu_audio])
-                    batch.to(pl_module.device)
-                    _ = pl_module(batch)
+                    _ = pl_module(cpu_batch)
                     prof_cpu.step()
 
         prof_result_cpu = prof_cpu.key_averages()
@@ -98,6 +101,16 @@ class ComplexityProfilerCallback(Callback):
         if torch.cuda.is_available():
             pl_module.to("cuda")
             gpu_audio = cpu_audio.to("cuda")
+            gpu_batch = {
+                "input": gpu_audio,
+                "mic_lengths": torch.tensor(
+                    [num_channels], dtype=torch.long, device="cuda"
+                ),
+                "time_lengths": torch.tensor(
+                    [input_len], dtype=torch.long, device="cuda"
+                ),
+                "meta": {},
+            }
             with torch.no_grad():
                 with torch.profiler.profile(
                     activities=[
@@ -107,9 +120,7 @@ class ComplexityProfilerCallback(Callback):
                     schedule=schedule,
                 ) as prof_gpu:
                     for _ in range(1 + self.warmup_steps + self.active_steps):
-                        batch = HeterogeneousBatch(raw_audio=[gpu_audio])
-                        batch.to(pl_module.device)
-                        _ = pl_module(batch)
+                        _ = pl_module(gpu_batch)
                         prof_gpu.step()
             prof_result_gpu = prof_gpu.key_averages()
 

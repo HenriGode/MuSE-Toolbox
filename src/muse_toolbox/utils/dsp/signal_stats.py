@@ -10,7 +10,6 @@ from muse_toolbox.utils.math.matrix_ops import (
     makeHermitian,
     mytorch_eigvalsh,
     regularize,
-    vec2diagMat,
 )
 from muse_toolbox.utils.math.windowing import (
     exp_windowing_conv,
@@ -128,19 +127,45 @@ def smoothCovarianceMatrix_conv(
     )
 
 
-def coherenceMatrix(covMat: torch.Tensor) -> torch.Tensor:
-    """
-    Computes the spatial coherence matrix from a covariance matrix.
+def coherenceMatrix(covMat: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """Computes the spatial coherence matrix from a covariance matrix.
+
+    Normalizes off-diagonal entries by the geometric mean of the corresponding
+    diagonal powers while remaining numerically safe on silent frames, zero-padded
+    channels, and tiny negative numerical drift on the diagonal.
 
     Args:
-        covMat (torch.Tensor): The covariance matrix.
+        covMat (torch.Tensor): Covariance matrix tensor of shape (..., M, M).
+        eps (float, optional): Numerical floor below which diagonal power products
+            are treated as zero. Defaults to 1e-12.
 
     Returns:
-        torch.Tensor: The corresponding coherence matrix.
+        torch.Tensor: Hermitian spatial coherence matrix of shape (..., M, M)
+            with unit real diagonal and off-diagonal magnitudes bounded by 1.
     """
     log.debug("Computing coherence matrix.")
-    Dsqrtinv = vec2diagMat(1 / covMat.diagonal(dim1=-2, dim2=-1).sqrt()[..., None])
-    return makeHermitian(Dsqrtinv @ covMat @ Dsqrtinv)
+    num_channels = covMat.shape[-1]
+    diag_real = covMat.diagonal(dim1=-2, dim2=-1).real.clamp(min=0.0)
+    diag_sqrt = diag_real.sqrt()
+    denom = diag_sqrt.unsqueeze(-1) * diag_sqrt.unsqueeze(-2)
+
+    safe_denom = denom.clamp(min=eps)
+    coherence = torch.where(
+        denom > eps,
+        covMat / safe_denom,
+        torch.zeros_like(covMat),
+    )
+
+    # Guard against tiny floating-point overshoot > 1.0 while preserving phase.
+    mag = coherence.abs()
+    over_unit = mag > 1.0
+    if torch.any(over_unit):
+        coherence = torch.where(over_unit, coherence / mag.clamp(min=1.0), coherence)
+
+    coherence = makeHermitian(coherence)
+    eye_mask = torch.eye(num_channels, device=coherence.device, dtype=torch.bool)
+    coherence = torch.where(eye_mask, torch.ones_like(coherence), coherence)
+    return coherence
 
 
 def gmsc(

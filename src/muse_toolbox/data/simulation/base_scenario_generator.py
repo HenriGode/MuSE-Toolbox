@@ -340,17 +340,7 @@ class BaseScenarioGenerator(Dataset, ABC):
             return torch.zeros(num_frames, dtype=torch.long)
 
         sample_wise_count = torch.stack(source_vads).long().sum(dim=0)
-        framed_counts = sample_wise_count.unfold(
-            dimension=0, size=self.transform.nfft, step=self.transform.hop_length
-        )
-
-        pad_size = self.transform.nfft // (2 * self.transform.hop_length)
-        framed_counts = torch.nn.functional.pad(
-            framed_counts.T, (pad_size, pad_size), "replicate"
-        ).T
-
-        frame_wise_count = torch.mode(framed_counts, dim=1).values
-        return frame_wise_count
+        return self.transform.samples2frames_quantity(sample_wise_count, dim=0)
 
     def _load_source_materials(self, scenario_params: dict[str, Any]) -> tuple[dict, dict, torch.Tensor | None, dict]:
         """Loads clean speech, RIRs, and noise for the scenario.

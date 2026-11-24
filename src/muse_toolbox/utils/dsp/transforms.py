@@ -158,22 +158,36 @@ class STFTtransform(torch.nn.Module):
 
     def encode(self, signal: torch.Tensor) -> torch.Tensor:
         """
-        Apply STFT to encode the input signal.
+        Apply strictly causal STFT (Option B: zero-start causal left-padded STFT with
+        ``center=False``) to encode the input time-domain signal.
+
+        The input waveform is padded strictly on the left with ``nfft - hop_length`` zeros
+        (and zero right-padding) before applying an uncentered STFT (``center=False``).
+        Consequently:
+        - A signal of ``L`` samples produces ``T = L // hop_length`` frames.
+        - Frame ``t`` (0-based) covers samples ``[(t + 1) * hop_length - nfft : (t + 1) * hop_length]``,
+          emitting the very first frame after the first ``hop_length`` samples arrive and never
+          accessing future samples ``>= (t + 1) * hop_length``.
         
         Args:
-            signal (torch.Tensor): Time-domain signal of shape `(..., M, N_samples)`.
+            signal (torch.Tensor): Time-domain signal of shape ``(..., M, N_samples)``.
             
         Returns:
-            torch.Tensor: STFT signal of shape `(..., F, M, T_frames)`.
+            torch.Tensor: Complex STFT tensor of shape ``(..., F, M, T_frames)``.
         """
         orig_shape = signal.shape  #  (..., M, N_samples)
+        flat_signal = signal.reshape(-1, orig_shape[-1])
+
+        pad_left = max(0, self.nfft - self.hop_length)
+        if pad_left > 0:
+            flat_signal = torch.nn.functional.pad(flat_signal, (pad_left, 0))
 
         stft_signal = torch.stft(
-            signal.reshape(-1, *orig_shape[-1:]),
+            flat_signal,
             self.nfft,
             hop_length=self.hop_length,
-            window=self.window,#.to(signal.device),
-            center=True,
+            window=self.window,
+            center=False,
             onesided=True,
             return_complex=True,
         )
@@ -199,16 +213,16 @@ class STFTtransform(torch.nn.Module):
         num_samples: int | None = None,
     ) -> torch.Tensor:
         """
-        Apply inverse STFT to decode the input signal back to time domain.
+        Apply inverse STFT to decode a causal left-padded STFT tensor back to the time domain.
         
         Args:
-            stft_signal (torch.Tensor): STFT signal.
+            stft_signal (torch.Tensor): Complex STFT tensor of shape ``(..., F, M, T_frames)``.
             DC_zero (bool): If True and remove_DC was False, force DC band to zero.
             Nyquist_zero (bool): If True and remove_Nyquist was False, force Nyquist band to zero.
             num_samples (int | None): Target number of samples. If not None, truncates or zero-pads to this length.
 
         Returns:
-            torch.Tensor: Time-domain signal.
+            torch.Tensor: Reconstructed time-domain signal of shape ``(..., M, N_samples)``.
         """
         stft_signal = stft_signal.transpose(-2, -3)
         orig_shape = list(stft_signal.shape)
@@ -229,13 +243,20 @@ class STFTtransform(torch.nn.Module):
         if not self.remove_Nyquist and Nyquist_zero:
             stft_signal[..., -1, :] = 0
 
-        # Apply inverse STFT
-        if memory(stft_signal) < 1024**3:
+        # Because encode() left-padded by (nfft - hop_length) with center=False,
+        # we pad 1 trailing STFT frame so the right-hand NOLA boundary is well-conditioned,
+        # run istft(center=True) (which strips the first nfft // 2 samples), and then strip
+        # the remaining (nfft - hop_length) - (nfft // 2) left-pad offset.
+        stft_padded = torch.nn.functional.pad(stft_signal, (0, 1))
+        padded_shape = list(stft_padded.shape)
+        left_trim = max(0, (self.nfft - self.hop_length) - (self.nfft // 2))
+
+        if memory(stft_padded) < 1024**3:
             time_signal = torch.istft(
-                stft_signal.reshape(-1, *orig_shape[-2:]),
+                stft_padded.reshape(-1, *padded_shape[-2:]),
                 self.nfft,
                 hop_length=self.hop_length,
-                window=self.window,#.to(stft_signal.device),
+                window=self.window,
                 center=True,
                 onesided=True,
                 return_complex=False,
@@ -247,48 +268,55 @@ class STFTtransform(torch.nn.Module):
                         stft_sig,
                         self.nfft,
                         hop_length=self.hop_length,
-                        window=self.window,#.to(stft_signal.device),
+                        window=self.window,
                         center=True,
                         onesided=True,
                         return_complex=False,
                     )
-                    for stft_sig in stft_signal.reshape(-1, *orig_shape[-2:])
+                    for stft_sig in stft_padded.reshape(-1, *padded_shape[-2:])
                 ]
             )
 
+        if left_trim > 0:
+            time_signal = time_signal[..., left_trim:]
+
         time_signal_reshape = time_signal.reshape(*orig_shape[:-2], -1)
 
-        # Truncate or zero pad in the time dimension if num_samples is specified
-        if num_samples is not None:
-            if time_signal_reshape.shape[-1] < num_samples:
-                time_signal_reshape = torch.nn.functional.pad(
-                    time_signal_reshape,
-                    (0, num_samples - time_signal_reshape.shape[-1]),
-                    "constant",
-                    0,
-                )
-            elif time_signal_reshape.shape[-1] > num_samples:
-                time_signal_reshape = time_signal_reshape[..., :num_samples]
+        # Truncate or zero pad in the time dimension
+        target_samples = (
+            num_samples
+            if num_samples is not None
+            else orig_shape[-1] * self.hop_length
+        )
+        if time_signal_reshape.shape[-1] < target_samples:
+            time_signal_reshape = torch.nn.functional.pad(
+                time_signal_reshape,
+                (0, target_samples - time_signal_reshape.shape[-1]),
+                "constant",
+                0,
+            )
+        elif time_signal_reshape.shape[-1] > target_samples:
+            time_signal_reshape = time_signal_reshape[..., :target_samples]
 
         return time_signal_reshape
 
     def times2frames(
-        self, time: torch.Tensor | float | int | list | tuple, method: str = "center"
+        self, time: torch.Tensor | float | int | list | tuple, method: str = "causal"
     ) -> torch.Tensor:
         """
-        Convert time (in seconds) to frame indices.
+        Convert time or duration (in seconds) to frame indices / frame counts.
         
         Args:
-            time: Time in seconds.
-            method (str): Method to convert time to frame indices. Defaults to "center".
+            time: Time or duration in seconds.
+            method (str): Conversion mode ('causal' or 'center'). Defaults to 'causal'.
             
         Returns:
-            torch.Tensor: Corresponding frame indices.
+            torch.Tensor: Corresponding frame indices or frame counts.
         """
         if not isinstance(time, torch.Tensor):
             time = torch.tensor(time, dtype=torch.float64)
         match method:
-            case "center":
+            case "causal" | "center":
                 return (time / self.frame_shift).round().to(torch.int64)
             case _:
                 raise ValueError(
@@ -311,20 +339,22 @@ class STFTtransform(torch.nn.Module):
             time = torch.tensor(time, dtype=torch.float64)
         return (time * self.sampling_frequency).round().to(torch.int64)
 
-    def frames2times(self, frames: torch.Tensor, method: str = "center") -> torch.Tensor:
+    def frames2times(self, frames: torch.Tensor, method: str = "causal") -> torch.Tensor:
         """
-        Convert frame indices to time (in seconds).
+        Convert 0-based frame indices to time (in seconds).
         
         Args:
-            frames: Frame indices.
-            method (str): Method for conversion. Defaults to "center".
+            frames: 0-based frame indices.
+            method (str): Conversion mode ('causal' or 'center'). Defaults to 'causal'.
             
         Returns:
             torch.Tensor: Corresponding time in seconds.
         """
+        if not isinstance(frames, torch.Tensor):
+            frames = torch.tensor(frames, dtype=torch.float64)
         match method:
-            case "center":
-                return (frames - 1) * self.frame_shift
+            case "causal" | "center":
+                return frames * self.frame_shift
             case _:
                 raise ValueError(
                     f"Unknown method '{method}' for converting frames to time."
@@ -332,58 +362,72 @@ class STFTtransform(torch.nn.Module):
 
     def samples2frames(self, samples: torch.Tensor | int) -> torch.Tensor:
         """
-        Convert sample indices to frame indices.
+        Convert sample counts or sample indices to STFT frame counts under the
+        strictly causal left-padded STFT (``T = samples // hop_length``).
         
         Args:
-            samples: Sample indices.
+            samples: Sample count(s) or sample indices.
             
         Returns:
-            torch.Tensor: Corresponding frame indices.
+            torch.Tensor: Corresponding STFT frame counts/indices as int64 tensor.
         """
         if not isinstance(samples, torch.Tensor):
-            samples = torch.tensor(samples, dtype=torch.float64)
-        return (samples / self.hop_length).round().to(torch.int64)
+            samples = torch.tensor(samples, dtype=torch.int64)
+        return torch.div(samples, self.hop_length, rounding_mode="floor").to(torch.int64)
 
     def frames2samples(self, frames: torch.Tensor | int) -> torch.Tensor:
         """
-        Convert frame indices to sample indices.
+        Convert frame counts or indices to sample counts/indices.
         
         Args:
-            frames: Frame indices.
+            frames: Frame counts or indices.
             
         Returns:
-            torch.Tensor: Corresponding sample indices.
+            torch.Tensor: Corresponding sample counts/indices.
         """
         if not isinstance(frames, torch.Tensor):
             frames = torch.tensor(frames, dtype=torch.float64)
         return (frames * self.hop_length).round().to(torch.int64)
 
     def samples2frames_quantity(
-        self, quantity: torch.Tensor, dim: int = -1, mode: str = "center"
+        self, quantity: torch.Tensor, dim: int = -1, mode: str = "causal"
     ) -> torch.Tensor:
         """
-        Convert a sample-based quantity tensor to a frame-based quantity tensor.
+        Convert a sample-based quantity tensor to a frame-based quantity tensor
+        aligned with the strictly causal left-padded STFT (Option B).
+
+        For a signal of ``num_samples`` samples, the causal STFT produces
+        ``num_frames = num_samples // hop_length`` frames, where 0-based frame ``t``
+        spans up to its newest (right-edge) sample ``(t + 1) * hop_length - 1``.
+        In ``mode="causal"`` (default), the frame label is sampled at this causal
+        right edge ``(t + 1) * hop_length - 1``, guaranteeing zero future look-ahead
+        relative to the STFT analysis window.
 
         Args:
             quantity (torch.Tensor): Input tensor with a sample dimension.
             dim (int): The dimension corresponding to samples.
-            mode (str): Method to select the frame value. 'center' picks the center sample of the frame.
+            mode (str): Method to select the frame value ('causal' picks the newest
+                sample ``(t + 1) * hop_length - 1`` of frame ``t``; 'center' picks
+                the start of each hop ``t * hop_length``). Defaults to 'causal'.
 
         Returns:
-            torch.Tensor: Tensor with the sample dimension replaced by the frame dimension.
+            torch.Tensor: Tensor with the sample dimension replaced by the frame dimension
+                of length ``num_samples // hop_length``.
         """
         num_samples = quantity.shape[dim]
-        # Calculate number of frames corresponding to centered STFT (approx)
-        num_frames = num_samples // self.hop_length + 1
+        num_frames = max(1, num_samples // self.hop_length)
 
-        # Generate indices for the center of each frame (since center=True in STFT)
-        # frame t centers at sample t * hop_length
         frame_indices = torch.arange(num_frames, device=quantity.device)
-        sample_indices = (frame_indices * self.hop_length).long()
+        if mode == "causal":
+            sample_indices = ((frame_indices + 1) * self.hop_length - 1).long()
+        elif mode == "center":
+            sample_indices = (frame_indices * self.hop_length).long()
+        else:
+            raise ValueError(
+                f"Unknown mode '{mode}' in samples2frames_quantity. Expected 'causal' or 'center'."
+            )
 
-        # Clamp to valid range
-        sample_indices = torch.clamp(sample_indices, max=num_samples - 1)
-
+        sample_indices = torch.clamp(sample_indices, min=0, max=num_samples - 1)
         return quantity.index_select(dim, sample_indices)
 
     def frames2samples_quantity(
@@ -396,7 +440,8 @@ class STFTtransform(torch.nn.Module):
 
         Args:
             quantity (torch.Tensor): Input tensor with a frame dimension.
-            num_samples (int, optional): Target number of samples. If None, inferred.
+            num_samples (int, optional): Target number of samples. If None, inferred
+                as ``num_frames * hop_length``.
             dim (int): The dimension corresponding to frames.
 
         Returns:
@@ -407,9 +452,9 @@ class STFTtransform(torch.nn.Module):
         orig_shape = quantity_t.shape
         orig_dtype = quantity.dtype
 
-        # Convert Bool to Float/Byte for interpolation support
-        if quantity.dtype == torch.bool:
-            quantity_processing = quantity_t.to(torch.uint8)
+        # Convert non-floating-point tensors (bool, int64, etc.) to float32 for interpolation support
+        if not quantity_t.is_floating_point():
+            quantity_processing = quantity_t.to(torch.float32)
         else:
             quantity_processing = quantity_t
 
@@ -421,7 +466,7 @@ class STFTtransform(torch.nn.Module):
         )  # (Batch, 1, Frames)
 
         if num_samples is None:
-            num_samples = (quantity_t.shape[-1] - 1) * self.hop_length
+            num_samples = quantity_t.shape[-1] * self.hop_length
 
         # 1D Interpolation expects (Batch, Channels, Length)
         mode = "nearest"
@@ -434,8 +479,8 @@ class STFTtransform(torch.nn.Module):
         output = upsampled.squeeze(1).reshape(*orig_shape[:-1], num_samples)
 
         # Restore original type and dimension order
-        if orig_dtype == torch.bool:
-            output = output.to(torch.bool)
+        if output.dtype != orig_dtype:
+            output = output.to(orig_dtype)
 
         return output.transpose(dim, -1)
 

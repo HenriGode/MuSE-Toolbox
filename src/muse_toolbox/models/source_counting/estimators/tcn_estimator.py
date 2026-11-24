@@ -15,8 +15,8 @@ class TCN_estimator(BaseSourceCountEstimator):
     """
     A wrapper for the official TCN model from the Conv-TasNet repository.
 
-    This class adapts the TCN model to the COSAD framework for causal source
-    activity detection. It takes coherence features as input and produces
+    This class adapts the TCN model to the OSC framework for causal online source
+    counting. It takes acoustic/spatial features as input and produces
     frame-wise source count logits.
     """
 

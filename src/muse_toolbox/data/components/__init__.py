@@ -1,7 +1,7 @@
-from .heterogeneous_batch import HeterogeneousBatch
-from .precomputed_dataset import PrecomputedDataset
+from muse_toolbox.data.components.collate import raw_audio_collate_fn
+from muse_toolbox.data.components.dynamic_chunk_dataset import DynamicChunkDataset
 
 __all__ = [
-    "HeterogeneousBatch",
-    "PrecomputedDataset"
+    "DynamicChunkDataset",
+    "raw_audio_collate_fn",
 ]

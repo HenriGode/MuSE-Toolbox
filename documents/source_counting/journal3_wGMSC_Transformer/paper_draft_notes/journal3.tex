@@ -208,9 +208,9 @@ In this section, we formulate the acoustic signal model in the time and \gls{STF
 \label{sec:signal_model_stft}
 We consider an acoustic scenario with $K_{\mathrm{max}}$ sound sources captured by an arbitrary array of $M$ microphones. Let $y_{m,l}$ denote the discrete-time signal recorded at the $m$-th microphone ($m \in \{1, \ldots, M\}$), sampled at a sampling frequency $f_s$, where $l \in \{1, \ldots, L\}$ denotes the discrete-time sample index and $L$ is the total number of samples in the considered signal segment.
 
-By applying the \gls{STFT} with an analysis window of length $L_{\mathrm{win}}$ and a frame shift of $L_{\mathrm{hop}}$ samples, the microphone signals are transformed into the time-frequency domain. The total number of \gls{STFT} frames $T$ obtained from a segment of $L$ samples is given by
+By applying the \gls{STFT} with an analysis window of length $L_{\mathrm{win}}$ and a frame shift of $L_{\mathrm{hop}}$ samples, the microphone signals are transformed into the time-frequency domain. To mimic a real-time frame-by-frame streaming buffer that emits its first frame after the very first frame shift of $L_{\mathrm{hop}}$ samples without accessing future samples, each microphone signal $y_{m,l}$ is causally zero-padded strictly on the left by $L_{\mathrm{win}} - L_{\mathrm{hop}}$ samples ($y_{m,l} = 0$ for $l \le 0$, with zero right-padding) prior to uncentered framing. Consequently, time frame $t \in \{1, \ldots, T\}$ spans discrete-time samples $l \in \{t L_{\mathrm{hop}} - L_{\mathrm{win}} + 1, \ldots, t L_{\mathrm{hop}}\}$ with zero look-ahead beyond sample $t L_{\mathrm{hop}}$, and the total number of \gls{STFT} frames $T$ obtained from a segment of $L$ samples is given by
 \begin{align}
-  T = \left\lfloor \frac{L - L_{\mathrm{win}}}{L_{\mathrm{hop}}} \right\rfloor + 1.
+  T = \left\lfloor \frac{L}{L_{\mathrm{hop}}} \right\rfloor.
   \label{eq:num_frames_def}
 \end{align}
 Discarding the non-informative DC ($f=0$) and Nyquist ($f=L_{\mathrm{win}}/2$) components yields $F = L_{\mathrm{win}}/2 - 1$ frequency bins. Stacking the \gls{STFT} coefficients of all $M$ microphones yields the multi-channel observation vector:
@@ -278,7 +278,7 @@ The core objective of this work is to estimate the instantaneous number of activ
 \end{align}
 To enable low-latency operation in real-time acoustic applications, we impose a strict \gls{STFT} frame-level causality constraint: the estimation at time frame $t$ is conditioned exclusively on current and past observations up to frame $t$ ($\tau \leq t$), with zero look-ahead into future frames ($\tau > t$). All neural network architectures evaluated in this work are designed to strictly comply with~\Cref{eq:strict_causality_definition}.
 
-We formulate source counting as an integer classification problem with $(K_{\mathrm{max}} + 1)$ mutually exclusive classes, where $K_t = 0$ corresponds to source absence (ambient noise only). For a given audio segment comprising $T$ time frames, the ground-truth source count sequence is represented as a $T$-dimensional target vector:
+We formulate source counting as an integer classification problem with $(K_{\mathrm{max}} + 1)$ mutually exclusive classes, where $K_t = 0$ corresponds to source absence (ambient noise only). To preserve strict sample-level causality without future look-ahead relative to the \gls{STFT} analysis window, the frame-level ground-truth source count $K_t$ at frame $t$ is evaluated at the newest sample $l = t L_{\mathrm{hop}}$ entering the analysis buffer. For a given audio segment comprising $T$ time frames, the ground-truth source count sequence is represented as a $T$-dimensional target vector:
 \begin{align}
   \mathbf{k} = \begin{bmatrix} K_1 & K_2 & \cdots & K_T \end{bmatrix}^{\mathrm{T}} \in \{0, 1, \ldots, K_{\mathrm{max}}\}^{T}.
   \label{eq:target_vector}
@@ -424,7 +424,7 @@ where $\{\cdot\}^*$ denotes complex conjugation. Collecting the phase difference
   \bm{\theta}_{p,t} = \begin{bmatrix} \theta_{p,t,1} & \cdots & \theta_{p,t,F} \end{bmatrix}^{\mathrm{T}} \in (-\pi, \pi]^{F \times 1}.
   \label{eq:feat_ipd_vec}
 \end{align}
-Because the cyclic nature of phase values introduces artificial discontinuities around $\pm\pi$, the \gls{CSIPD} representation projects $\bm{\theta}_{p,t}$ onto the unit circle via trigonometric expansion~\cite{cornell2022overlapped}:
+Because the cyclic nature of phase values introduces artificial discontinuities around $\pm\pi$, the \gls{CSIPD} representation maps each phase difference $\theta_{p,t,f}$ onto the unit circle via element-wise cosine and sine transformations and concatenates the two $F$-dimensional blocks across frequency:
 \begin{align}
   \mathbf{z}_{p,t}^{(\mathrm{CSIPD})} = \begin{bmatrix} \cos\{\bm{\theta}_{p,t}\} \\ \sin\{\bm{\theta}_{p,t}\} \end{bmatrix} \in [-1, 1]^{2F \times 1},
   \label{eq:feat_csipd_vec}
@@ -1250,7 +1250,7 @@ The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}
 % Detail how the models are trained and what they are tested on.
 
 \subsection{Implementation Details}
-All audio recordings across all datasets are processed at a uniform sampling frequency of $f_s = \SI{16}{\kilo\hertz}$ using an \gls{STFT} with a \SI{25}{\milli\second} Hann window ($L_{\mathrm{win}} = 400$ samples) and a \SI{10}{\milli\second} frame shift ($L_{\mathrm{hop}} = 160$ samples), following Cornell et al.~\cite{cornell2022overlapped}.
+All audio recordings across all datasets are processed at a uniform sampling frequency of $f_s = \SI{16}{\kilo\hertz}$ using the strictly causal left-padded \gls{STFT} framework of~\Cref{sec:signal_model_stft} with a \SI{25}{\milli\second} Hann window ($L_{\mathrm{win}} = 400$ samples, left zero-padded by $L_{\mathrm{win}} - L_{\mathrm{hop}} = 240$ samples with \texttt{center=False}) and a \SI{10}{\milli\second} frame shift ($L_{\mathrm{hop}} = 160$ samples), neglecting the DC and Nyquist frequency bins ($F = 199$). While Cornell et al.~\cite{cornell2022overlapped} employed a \SI{50}{\milli\second} analysis window specifically for \gls{IPD} and \gls{CSIPD} extraction, we apply this unified \SI{25}{\milli\second} \gls{STFT} configuration identically across all spectral and spatial feature extractors (including \gls{CSIPD} and Log-Mel filterbanks with $D_{\mathrm{mel}} = 80$ bands) to ensure identical temporal alignment and a fair cross-feature comparison. Furthermore, all multi-component feature extractors (\gls{STFT}, \gls{CSIPD}, \gls{PSC}, and \gls{wGMSC}) follow a unified block-concatenated component layout along the feature axis (note that stacking $\cos\{\bm{\theta}_{p,t}\}$ and $\sin\{\bm{\theta}_{p,t}\}$ block-wise rather than interleaving per bin is mathematically identical under the first linear/pointwise projection layer).
 
 \subsection{Acoustic Ground Truth and Synthetic Dataset Generation}
 % Describe the PyRoomAcoustics simulation (Phase 1 & 2) using LibriSpeech and DEMAND. Explain how the -30dB power-based VAD with 200ms bridging is applied to isolated sources before mixing to create the acoustic labels.

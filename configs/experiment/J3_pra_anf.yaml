@@ -1,7 +1,7 @@
 # @package _global_
 defaults:
   - override /task: source_counting
-  - override /model: cosad
+  - override /model: osc
   - override /dataset: pra_anf_circ_8ch # This will be dynamically overridden by multirun
 
 experiment_name: J3_feature_comparison

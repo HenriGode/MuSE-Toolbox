@@ -3,7 +3,6 @@
 import logging
 import torch
 from lightning.pytorch import Callback, Trainer, LightningModule
-from muse_toolbox.data.components.heterogeneous_batch import HeterogeneousBatch
 
 log = logging.getLogger(__name__)
 
@@ -40,13 +39,13 @@ class CausalityCheckCallback(Callback):
 
         pl_module.eval()
 
-        num_channels = getattr(pl_module, "num_channels", 1)
-        fs = getattr(pl_module, "fs", 16000)
+        num_channels = int(getattr(pl_module, "num_mics", None) or getattr(pl_module, "num_channels", 1))
+        fs = int(getattr(pl_module, "fs", 16000))
 
         allowed_latency = int(self.allowed_latency_s * fs)
         sig_len_range = [2.0, 8.0]
         num_repetitions = 10
-        
+
         for _ in range(num_repetitions):
             length = (
                 int(
@@ -57,30 +56,30 @@ class CausalityCheckCallback(Callback):
             )
             sig = torch.randn(length)
             sig = sig / (sig.abs().max() + 1e-8) * 0.9
-            
-            p = torch.randint(0, length, (1,)).item()
+
+            p = int(torch.randint(0, length, (1,)).item())
             sig[p:] = float("nan")
-            
-            # HeterogeneousBatch expects a list of (Channels, Time)
-            sig_channel = sig.unsqueeze(0).repeat(num_channels, 1)
-            batch = HeterogeneousBatch(raw_audio=[sig_channel.to(pl_module.device)])
-            batch.to(pl_module.device)
+
+            # Dictionary batch expects input of shape (B, M, T_samples)
+            sig_channel = sig.unsqueeze(0).unsqueeze(0).repeat(1, num_channels, 1)
+            batch = {
+                "input": sig_channel.to(pl_module.device),
+                "mic_lengths": torch.tensor(
+                    [num_channels], dtype=torch.long, device=pl_module.device
+                ),
+                "time_lengths": torch.tensor(
+                    [length], dtype=torch.long, device=pl_module.device
+                ),
+                "meta": {},
+            }
 
             with torch.no_grad():
                 out = pl_module(batch)
-                
-                # Try to find the estimates tensor. Depending on the model, it might be in different places.
-                est_sig = None
-                if getattr(out, "padded_estimates", None) is not None:
-                    est_sig = out.padded_estimates
-                elif getattr(out, "estimates", None) is not None:
-                    if isinstance(out.estimates, list) and len(out.estimates) > 0:
-                        est_sig = out.estimates[0].unsqueeze(0)
-                    else:
-                        est_sig = out.estimates
-                elif isinstance(out, dict):
-                    est_sig = out.get("input_proc", out.get("estimates", None))
-                
+                est_sig = (
+                    out.get("input_proc", out.get("estimates", None))
+                    if isinstance(out, dict)
+                    else None
+                )
                 if est_sig is None:
                     log.warning("CausalityCheckCallback could not find output tensor to check.")
                     return

@@ -1,0 +1,9 @@
+defaults:
+  - osc
+  - feature_extractor@cond_feature_extractor: csipd
+  - override feature_extractor: log_mel
+  - override source_count_estimator: transformer_fusion
+  - _self_
+
+# Fixed microphone count M for Cornell baseline pairwise flattening (e.g. 8 for AMI, Circ8, Rand8)
+num_mics: 8

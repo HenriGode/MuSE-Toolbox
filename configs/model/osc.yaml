@@ -1,13 +1,14 @@
 defaults:
-  - feature_extractor: wgmsc
-  - channel_combinator: null
+  - feature_extractor: log_mel
   - source_count_estimator: transformer
 
-_target_: muse_toolbox.models.source_counting.cosad.COSADmodule
+_target_: muse_toolbox.models.source_counting.osc.OSCmodule
 
 # These will be resolved dynamically from other parts of the config tree
 transform: ${transform}
 batch_size: ${dataset.batch_size}
+cond_feature_extractor: null
+num_mics: null
 
 
 loss_config:

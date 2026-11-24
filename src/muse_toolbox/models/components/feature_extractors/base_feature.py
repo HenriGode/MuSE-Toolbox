@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 class BaseFeatureExtractor(nn.Module, ABC):
     """
-    Abstract base class for all feature extractors in the COSAD framework.
+    Abstract base class for all feature extractors in the OSC framework.
 
     This class enforces a consistent interface where inputs and outputs are always
     dictionaries. It handles the dispatch between processing raw audio scenarios
@@ -66,9 +66,35 @@ class BaseFeatureExtractor(nn.Module, ABC):
     @abstractmethod
     def feature_dim(self) -> int:
         """
-        Returns the dimension (J) of the feature vector at each time step.
+        Returns the per-channel feature dimension (F) at each time step.
         """
         pass
+
+    def output_channels(self, num_mics: int | None = None) -> int:
+        """Returns the output channel count ``C`` for an input array of ``num_mics`` microphones.
+
+        Extractors with a fixed channel dimension (e.g. ``C = 1``) override this
+        without requiring ``num_mics``. Multi-channel or pairwise extractors resolve
+        ``C`` from ``num_mics``.
+
+        Args:
+            num_mics (int | None, optional): Number of microphones ``M`` in the array.
+
+        Returns:
+            int: Output channel count ``C``.
+
+        Raises:
+            ValueError: If ``num_mics`` is ``None`` for an ``M``-dependent extractor
+                or if ``num_mics < 1``.
+        """
+        if num_mics is None:
+            raise ValueError(
+                f"{self.__class__.__name__} produces an M-dependent channel dimension; "
+                "provide `num_mics` to resolve its static output channel count."
+            )
+        if num_mics < 1:
+            raise ValueError(f"num_mics must be >= 1, got {num_mics}.")
+        return int(num_mics)
 
     @abstractmethod
     def get_config(self) -> dict[str, Any]:

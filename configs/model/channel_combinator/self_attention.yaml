@@ -1,3 +1,0 @@
-_target_: muse_toolbox.models.components.channel_combinator.SelfAttentionChannelCombinator
-_partial_: true
-hidden_dim: 512

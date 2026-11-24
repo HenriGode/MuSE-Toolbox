@@ -1,0 +1,13 @@
+_target_: muse_toolbox.models.source_counting.estimators.transformer_estimator.FusionTransformerEstimator
+_partial_: true
+max_sources: ${dataset.generation_config.max_sources}
+fusion_mode: "early" # "early" (Cornell Fig. 3a concat after separate LN) or "film" (Cornell Fig. 3b late FiLM)
+causal: false # false: Cornell bidirectional baseline; true: strictly frame-causal
+chunk_size: 7 # Context frames C (bidirectional +/-C when causal=false; past-only T_c when causal=true)
+subsample: 10 # Temporal subsampling factor S / T_sub (1 disables subsampling)
+embed_dim: 384
+n_heads: 4
+ff_inner: 1024
+n_layers: 4
+dropout: 0.2
+max_seq_len: 10000
