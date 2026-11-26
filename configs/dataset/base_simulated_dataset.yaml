@@ -4,7 +4,7 @@
 defaults:
   - base_dataset
 
-num_scenarios: [1200, 150, 150] # [4, 20, 10]
+num_scenarios: [2400, 300, 300] # 80 h train / 10 h val / 10 h test (at 120 s/scenario), matching AMI unique duration
 clean_speech_databases:
   Librispeech:
     class: LibrispeechDatabase

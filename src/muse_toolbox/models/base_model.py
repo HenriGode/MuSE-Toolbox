@@ -249,10 +249,20 @@ class BaseLitModel(pl.LightningModule):
             raise ValueError("No optimizer configuration provided.")
 
         opt_name = list(self.optimizer_config.keys())[0]
-        opt_params = self.optimizer_config[opt_name] or {}
+        opt_params = dict(self.optimizer_config[opt_name] or {})
+        weight_decay = float(opt_params.pop("weight_decay", 0.0))
+
+        trainable_params = [p for p in self.parameters() if p.requires_grad]
+        decay_params = [p for p in trainable_params if p.ndim >= 2]
+        no_decay_params = [p for p in trainable_params if p.ndim < 2]
+        param_groups: list[dict[str, Any]] = []
+        if decay_params:
+            param_groups.append({"params": decay_params, "weight_decay": weight_decay})
+        if no_decay_params:
+            param_groups.append({"params": no_decay_params, "weight_decay": 0.0})
 
         if hasattr(torch.optim, opt_name):
-            optimizer = getattr(torch.optim, opt_name)(self.parameters(), **opt_params)
+            optimizer = getattr(torch.optim, opt_name)(param_groups, **opt_params)
         else:
             raise ValueError(f"Optimizer {opt_name} not found in torch.optim")
 
@@ -261,7 +271,7 @@ class BaseLitModel(pl.LightningModule):
             return cast(OptimizerLRScheduler, {"optimizer": optimizer})
 
         sched_name = list(self.lr_scheduler_config.keys())[0]
-        sched_params = self.lr_scheduler_config[sched_name] or {}
+        sched_params = dict(self.lr_scheduler_config[sched_name] or {})
 
         # Handle special cases for certain schedulers
         # For example, if "total_steps" is specified as "estimated_stepping_batches",
@@ -434,10 +444,68 @@ class BaseLitModel(pl.LightningModule):
             valid_estimates.append(estimates[i, :valid_len])
             valid_targets.append(target_i[:valid_len])
 
+        if "recording_id" not in meta_dict:
+            scenario_ids = meta_dict.get("scenario_id")
+            if isinstance(scenario_ids, list) and len(scenario_ids) == len(valid_estimates):
+                meta_dict["recording_id"] = list(scenario_ids)
+            else:
+                meta_dict["recording_id"] = [
+                    f"rec_{dataloader_idx}_{i}" for i in range(len(valid_estimates))
+                ]
+
         return valid_estimates, valid_targets, meta_dict
 
+    def _compute_and_log_stitched_eval_loss(
+        self,
+        estimates: list[torch.Tensor],
+        targets: list[torch.Tensor],
+        step_type: str,
+        dataloader_idx: int = 0,
+    ) -> None:
+        """Computes and logs frame-weighted cross-entropy loss on stitched eval frames.
+
+        Args:
+            estimates (list[torch.Tensor]): Stitched per-chunk logit tensors ``(T_i, C)``.
+            targets (list[torch.Tensor]): Stitched per-chunk integer count targets ``(T_i,)``.
+            step_type (str): Evaluation stage (``"val"`` or ``"test"``).
+            dataloader_idx (int, optional): Active dataloader index. Defaults to ``0``.
+        """
+        if not estimates or not hasattr(self, "criterion"):
+            return
+
+        cat_preds = torch.cat(estimates, dim=0).unsqueeze(0)
+        cat_targets = torch.cat(targets, dim=0).unsqueeze(0).long()
+        num_frames = int(cat_targets.numel())
+        if num_frames == 0:
+            return
+
+        if cat_preds.shape[-1] > 1:
+            cat_targets = cat_targets.clamp(min=0, max=cat_preds.shape[-1] - 1)
+
+        loss_val = self.criterion.compute_loss(cat_preds, cat_targets)
+        if step_type == "test" and len(self.test_dataset_names) > 1:
+            ds_name = self.get_test_dataset_name(dataloader_idx)
+            log_payload = {f"test/{ds_name}/loss": loss_val}
+        else:
+            log_payload = {f"{step_type}/loss": loss_val}
+
+        self.log_dict(
+            log_payload,
+            on_step=False,
+            on_epoch=True,
+            reduce_fx="mean",
+            batch_size=num_frames,
+            prog_bar=False,
+            sync_dist=True,
+            add_dataloader_idx=False,
+        )
+
     def _metric_step(
-        self, processed_batch: dict, dataloader_idx: int, step_type: str
+        self,
+        processed_batch: dict,
+        dataloader_idx: int,
+        step_type: str,
+        prepared: tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]] | None = None,
     ) -> None:
         """
         Updates the metric collections based on the estimates from the forward pass.
@@ -446,10 +514,15 @@ class BaseLitModel(pl.LightningModule):
             processed_batch: The processed batch containing estimates and metadata.
             dataloader_idx (int): The index of the dataloader.
             step_type (str): The step type ('val', 'test').
+            prepared (tuple | None, optional): Pre-stitched ``(estimates, targets, meta_dict)``
+                tuple so stateful chunk stitching is not executed twice.
         """
-        estimates, targets, meta_dict = self._prepare_eval_estimates_and_targets(
-            processed_batch, step_type, dataloader_idx=dataloader_idx
-        )
+        if prepared is None:
+            estimates, targets, meta_dict = self._prepare_eval_estimates_and_targets(
+                processed_batch, step_type, dataloader_idx=dataloader_idx
+            )
+        else:
+            estimates, targets, meta_dict = prepared
         if not estimates:
             return
 
@@ -551,31 +624,43 @@ class BaseLitModel(pl.LightningModule):
 
     def validation_step(self, batch: dict, idx: int, dataloader_idx: int = 0) -> None:
         """
-        Defines the validation step.
+        Defines the validation step using continuous stitched outputs for loss and metrics.
 
         Args:
             batch: The validation batch.
             idx (int): The batch index.
             dataloader_idx (int, optional): The index of the dataloader.
         """
-        _, processed_batch = self._common_step(
-            batch, idx, "val", dataloader_idx=dataloader_idx
+        _ = idx
+        processed_batch = self(batch)
+        prepared = self._prepare_eval_estimates_and_targets(
+            processed_batch, "val", dataloader_idx=dataloader_idx
         )
-        self._metric_step(processed_batch, dataloader_idx, "val")
+        estimates, targets, _ = prepared
+        self._compute_and_log_stitched_eval_loss(
+            estimates, targets, step_type="val", dataloader_idx=dataloader_idx
+        )
+        self._metric_step(processed_batch, dataloader_idx, "val", prepared=prepared)
 
     def test_step(self, batch: dict, idx: int, dataloader_idx: int = 0) -> None:
         """
-        Defines the test step.
+        Defines the test step using continuous stitched outputs for loss and metrics.
 
         Args:
             batch: The test batch.
             idx (int): The batch index.
             dataloader_idx (int, optional): The index of the dataloader.
         """
-        _, processed_batch = self._common_step(
-            batch, idx, "test", dataloader_idx=dataloader_idx
+        _ = idx
+        processed_batch = self(batch)
+        prepared = self._prepare_eval_estimates_and_targets(
+            processed_batch, "test", dataloader_idx=dataloader_idx
         )
-        self._metric_step(processed_batch, dataloader_idx, "test")
+        estimates, targets, _ = prepared
+        self._compute_and_log_stitched_eval_loss(
+            estimates, targets, step_type="test", dataloader_idx=dataloader_idx
+        )
+        self._metric_step(processed_batch, dataloader_idx, "test", prepared=prepared)
 
     def predict_step(
         self, batch: dict, batch_idx: int, dataloader_idx: int = 0

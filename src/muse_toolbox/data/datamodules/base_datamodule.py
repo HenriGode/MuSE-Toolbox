@@ -48,10 +48,13 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         acc_device: torch.device,
         chunk_length_s: float,
         min_context_s: float,
-        train_items_per_epoch: int,
+        train_items_per_epoch: int | None,
         augmentation: dict,
         eval_chunk_length_s: float | None = None,
         eval_min_context_s: float | None = None,
+        precomputed_id: str | None = None,
+        mic_count_probs: dict[int, float] | None = None,
+        single_channel_expansion: bool | None = None,
         **kwargs
     ) -> None:
         """Initializes the BaseDataModule.
@@ -70,12 +73,23 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             acc_device (torch.device): Device to use for precomputation acceleration.
             chunk_length_s (float): Length of the chunks to load in seconds.
             min_context_s (float): Overlap context in seconds.
-            train_items_per_epoch (int): Number of training items per epoch.
+            train_items_per_epoch (int | None): Number of training items per epoch,
+                or ``None`` to compute 100% unique corpus duration per epoch.
             augmentation (dict): Augmentation configuration dictionary.
             eval_chunk_length_s (Optional[float]): Evaluation chunk length in seconds
                 for validation and testing splits (defaults to `chunk_length_s` if None).
             eval_min_context_s (Optional[float]): Evaluation overlap context in seconds
                 for validation and testing splits (defaults to `min_context_s` if None).
+            precomputed_id (Optional[str]): Optional parent dataset ID whose precomputed
+                disk folder ``data/datasets/<precomputed_id>`` is shared without
+                duplicating storage (e.g. ``Rand3-8`` reading ``Rand8`` scenarios).
+            mic_count_probs (Optional[dict[int, float]]): Optional discrete probability
+                distribution over microphone counts ``M in {1..8}`` for dynamic
+                microphone subsampling in `DynamicChunkDataset`.
+            single_channel_expansion (Optional[bool]): Optional override enabling
+                single-channel stream sampling/expansion in `DynamicChunkDataset`.
+                When ``None``, the pipeline sets it automatically from the model's
+                `is_single_channel_system` property.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -95,9 +109,26 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.eval_min_context_s = eval_min_context_s
         self.train_items_per_epoch = train_items_per_epoch
         self.augmentation = augmentation
-        
+        self.precomputed_id = str(precomputed_id) if precomputed_id is not None else None
+        self.mic_count_probs = dict(mic_count_probs) if mic_count_probs is not None else None
+        self._explicit_single_channel_expansion: bool | None = (
+            bool(single_channel_expansion)
+            if single_channel_expansion is not None
+            else None
+        )
+        self.single_channel_expansion: bool = bool(single_channel_expansion or False)
+
         self.data_is_prepared = False
-        self.precomputed_dir = self.data_dir / "datasets" / self.id
+        self.precomputed_dir = self.data_dir / "datasets" / (self.precomputed_id or self.id)
+
+    def set_single_channel_expansion(self, enabled: bool) -> None:
+        """Sets single-channel stream expansion unless explicitly overridden in YAML.
+
+        Args:
+            enabled (bool): Whether the attached model consumes only 1 audio channel.
+        """
+        if self._explicit_single_channel_expansion is None:
+            self.single_channel_expansion = bool(enabled)
 
     # --- Abstract methods for subclasses to implement ---
     @abstractmethod
@@ -152,7 +183,12 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         dependent_dirs_to_delete = list(predictions_base_path.glob(f"{self.id}*")) + \
                                    list(checkpoints_base_path.glob(f"{self.id}*"))
 
-        if dir_to_delete.exists():
+        if self.precomputed_id is not None and self.precomputed_id != self.id:
+            log.warning(
+                f"Reset is enabled for derived dataset '{self.id}', but refusing to delete "
+                f"shared parent precomputed directory '{dir_to_delete}' (precomputed_id='{self.precomputed_id}')."
+            )
+        elif dir_to_delete.exists():
             log.warning("=" * 50)
             log.warning("!! WARNING: RESET FLAG IS ENABLED !!")
             log.warning(f"Deleting precomputed database at: {dir_to_delete}")
@@ -265,6 +301,9 @@ class BaseDataModule(pl.LightningDataModule, ABC):
             transform=self.transform,
             eval_chunk_length_s=self.eval_chunk_length_s,
             eval_min_context_s=self.eval_min_context_s,
+            mic_count_probs=self.mic_count_probs,
+            single_channel_expansion=self.single_channel_expansion,
+            seed=self.seed if self.seed is not None else 777,
         )
 
     def train_dataloader(self) -> DataLoader:

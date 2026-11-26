@@ -82,6 +82,11 @@ class PureSTFTFeatureExtractor(BaseFeatureExtractor):
         return False
 
     @property
+    def is_single_channel_input(self) -> bool:
+        """Returns ``True`` when configured for single-channel reference mode."""
+        return self.mode == "ref"
+
+    @property
     def precompute_type(self) -> str:
         """Returns the precomputation artifact type."""
         return "stft"
@@ -131,11 +136,14 @@ class PureSTFTFeatureExtractor(BaseFeatureExtractor):
         """
         num_channels = batch.shape[1]
         if self.mode == "ref":
-            if not (0 <= self.ref_channel < num_channels):
-                raise IndexError(
-                    f"ref_channel={self.ref_channel} out of range for {num_channels} channels."
-                )
-            x = batch[:, self.ref_channel : self.ref_channel + 1, :, :]
+            if num_channels == 1:
+                x = batch[:, :1, :, :]
+            else:
+                if not (0 <= self.ref_channel < num_channels):
+                    raise IndexError(
+                        f"ref_channel={self.ref_channel} out of range for {num_channels} channels."
+                    )
+                x = batch[:, self.ref_channel : self.ref_channel + 1, :, :]
         else:
             x = batch
 

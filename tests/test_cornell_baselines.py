@@ -78,27 +78,27 @@ def test_output_channels_and_no_channel_combinator() -> None:
 
 
 def test_film_layer_initialization_and_gradients() -> None:
-    """Verifies FiLMLayer identity-centered initialization (~[0.9, 1.1] scale, [-0.1, 0.1] shift)."""
+    """Verifies FiLMLayer exact zero-bias identity initialization and non-zero gradients."""
     torch.manual_seed(0)
     cond_dim = 15 * 28 * 398
     embed_dim = 64
     film = FiLMLayer(cond_dim=cond_dim, embed_dim=embed_dim)
 
-    assert (film.gamma_proj.bias >= -0.1).all() and (film.gamma_proj.bias <= 0.1).all()
-    assert (film.beta_proj.bias >= -0.1).all() and (film.beta_proj.bias <= 0.1).all()
-    # Ensure distinct channel biases (not all identical)
-    assert film.gamma_proj.bias.std().item() > 0.01
+    assert torch.all(film.gamma_proj.bias == 0.0)
+    assert torch.all(film.beta_proj.bias == 0.0)
 
     h = torch.randn(2, embed_dim, 12, requires_grad=True)
     cond = torch.randn(2, cond_dim, 12)
     scale = 1.0 + film.gamma_proj(cond)
-    assert scale.min().item() > 0.8 and scale.max().item() < 1.2
+    assert scale.min().item() > 0.9 and scale.max().item() < 1.1
 
     out = film(h, cond)
     assert out.shape == h.shape
     out.sum().backward()
     assert film.gamma_proj.weight.grad is not None and film.gamma_proj.weight.grad.abs().sum() > 0
+    assert film.gamma_proj.bias.grad is not None and film.gamma_proj.bias.grad.abs().sum() > 0
     assert film.beta_proj.weight.grad is not None and film.beta_proj.weight.grad.abs().sum() > 0
+    assert film.beta_proj.bias.grad is not None and film.beta_proj.bias.grad.abs().sum() > 0
 
 
 def test_three_cornell_baselines_and_causality() -> None:

@@ -171,18 +171,30 @@ def coherenceMatrix(covMat: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def gmsc(
     coherenceMat: torch.Tensor,
 ) -> torch.Tensor:
-    """
-    Computes the Generalized Magnitude Squared Coherence (GMSC) from a coherence matrix.
+    """Computes the Generalized Magnitude-Squared Coherence (GMSC) from a coherence matrix.
+
+    Evaluates the unsquared normalized principal eigenvalue
+    ``(lambda_max(Gamma) - 1) / (M - 1)`` bounded in ``[0, 1]``.
 
     Args:
-        coherenceMat (torch.Tensor): The coherence matrix.
+        coherenceMat (torch.Tensor): Complex Hermitian coherence matrix of shape
+            ``(..., M, M)``.
 
     Returns:
-        torch.Tensor: The GMSC values.
+        torch.Tensor: GMSC values of shape ``(..., 1, 1)`` in ``[0, 1]``.
     """
     log.debug("Computing GMSC.")
+    num_mics = coherenceMat.shape[-1]
     eigvals = mytorch_eigvalsh(coherenceMat)
-    return ((eigvals[..., [-1]][..., None] - 1) / (coherenceMat.shape[-1] - 1)) ** 2
+    if num_mics <= 1:
+        return torch.zeros(
+            (*coherenceMat.shape[:-2], 1, 1),
+            dtype=eigvals.dtype,
+            device=coherenceMat.device,
+        )
+    return ((eigvals[..., [-1]][..., None] - 1.0) / float(num_mics - 1)).clamp(
+        min=0.0, max=1.0
+    )
 
 
 def wdo(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:

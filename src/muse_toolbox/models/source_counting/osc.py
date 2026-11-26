@@ -128,6 +128,7 @@ class OSCmodule(BaseLitModel):
             compute_complexity_metrics=compute_complexity_metrics,
             check_causality=check_causality,
             transform=transform,
+            estimator_causal=bool(getattr(source_count_estimator, "causal", False)),
         )
 
         self.transform = transform
@@ -140,6 +141,7 @@ class OSCmodule(BaseLitModel):
         self._eval_overlap_state: dict[str, dict[str, Any] | None] = {
             "val": None,
             "test": None,
+            "predict": None,
         }
 
         self.num_params = self.count_parameters()
@@ -162,6 +164,22 @@ class OSCmodule(BaseLitModel):
         self.hparams["transform_config"] = self.transform.get_config()
 
         self._verbose_parameters()
+
+    @property
+    def is_single_channel_system(self) -> bool:
+        """Returns ``True`` if both primary and optional conditioning extractors use 1 channel.
+
+        Returns:
+            bool: ``True`` for single-channel reference models (e.g. single-channel Log-Mel),
+                ``False`` for multi-channel or spatial models.
+        """
+        primary_sc = bool(getattr(self.feature_extractor, "is_single_channel_input", False))
+        cond_sc = (
+            True
+            if self.cond_feature_extractor is None
+            else bool(getattr(self.cond_feature_extractor, "is_single_channel_input", False))
+        )
+        return primary_sc and cond_sc
 
     def _verbose_parameters(self, indent: str = "") -> None:
         """Logs the parameters of the module and its sub-components.
@@ -247,12 +265,23 @@ class OSCmodule(BaseLitModel):
             )
 
         # 2. Source Count Estimation
+        time_lengths = batch.get("time_lengths", None)
+        valid_frames = (
+            self.transform.samples2frames(time_lengths)
+            if time_lengths is not None
+            else None
+        )
+        est_sig = inspect.signature(self.source_count_estimator.forward)
+        est_kwargs: dict[str, Any] = {}
+        if "valid_frames" in est_sig.parameters:
+            est_kwargs["valid_frames"] = valid_frames
+
         if cond_features is not None:
             estimates = self.source_count_estimator(
-                features, cond_features=cond_features
+                features, cond_features=cond_features, **est_kwargs
             )
         else:
-            estimates = self.source_count_estimator(features)
+            estimates = self.source_count_estimator(features, **est_kwargs)
 
         return {
             "estimates": estimates,
@@ -284,9 +313,26 @@ class OSCmodule(BaseLitModel):
         """Resets sliding-window overlap buffer state at the start of validation."""
         self._eval_overlap_state["val"] = None
 
+    def on_validation_epoch_end(self) -> None:
+        """Clears overlap buffer state and logs epoch validation metrics."""
+        self._eval_overlap_state["val"] = None
+        super().on_validation_epoch_end()
+
     def on_test_epoch_start(self) -> None:
         """Resets sliding-window overlap buffer state at the start of testing."""
         self._eval_overlap_state["test"] = None
+
+    def on_test_epoch_end(self) -> None:
+        """Clears overlap buffer state at the end of testing."""
+        self._eval_overlap_state["test"] = None
+
+    def on_predict_epoch_start(self) -> None:
+        """Resets sliding-window overlap buffer state at the start of prediction."""
+        self._eval_overlap_state["predict"] = None
+
+    def on_predict_epoch_end(self) -> None:
+        """Clears sliding-window overlap buffer state at the end of prediction."""
+        self._eval_overlap_state["predict"] = None
 
     def _prepare_eval_estimates_and_targets(
         self,
@@ -294,31 +340,32 @@ class OSCmodule(BaseLitModel):
         step_type: str,
         dataloader_idx: int = 0,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]:
-        """Stitches or trims overlapping sliding-window chunks during evaluation.
+        """Stitches or trims overlapping sliding-window chunks during evaluation/prediction.
 
-        Supports two unified sliding-window schemes on deterministic evaluation grids:
+        Supports two unified sliding-window schemes on deterministic evaluation grids,
+        including arbitrarily short trailing end-of-recording chunks:
         1. `"overlap_avg"` (Cornell et al., 2022 non-causal baseline):
            Applies a sliding window (default 3.0 s with 50% / 1.5 s overlap) and averages
            the unnormalized class logits across overlapping frame regions of consecutive
            chunks from the same recording before computing frame-level predictions.
         2. `"causal_burnin"` (Strictly causal online chunking):
            Applies a sliding window (e.g., 7.0 s with 2.0 s overlap) where the first chunk
-           of a recording is evaluated in full (`[0 : T_win]`), and every subsequent chunk
-           discards its initial `overlap_frames` burn-in warmup prefix (`[0 : O]`) and
-           evaluates only the newly advancing causal tail (`[O : T_win]`) with zero future
-           look-ahead or overlap averaging.
+           of a recording is evaluated in full (`[0 : valid_len]`), and every subsequent chunk
+           tracks `emitted_end_frame` per recording to discard its exact overlapping burn-in
+           prefix (`emitted_end_frame - start_frame`) and emit only newly advancing frames.
 
         If chunk grid metadata (`"recording_id"`, `"start_sample"`, `"hop_samples"`) is not
         present in `processed_batch["meta"]` or `stitch_mode == "none"`, falls back to full
-        valid-frame slicing via `super()._prepare_eval_estimates_and_targets()`.
+        valid-frame slicing (when targets are present) or plain length slicing.
 
         Args:
             processed_batch (dict[str, Any]): Forward pass output dictionary.
-            step_type (str): Evaluation stage (`"val"` or `"test"`).
+            step_type (str): Evaluation stage (`"val"`, `"test"`, or `"predict"`).
+            dataloader_idx (int, optional): Active dataloader index. Defaults to `0`.
 
         Returns:
             tuple[list[torch.Tensor], list[torch.Tensor], dict[str, Any]]: Stitched
-                per-chunk `(estimates, targets, meta_dict)` lists ready for metric update.
+                per-chunk `(estimates, targets, meta_dict)` lists.
         """
         stitch_mode = self.get_active_eval_stitch_mode()
         meta = processed_batch["meta"]
@@ -329,14 +376,26 @@ class OSCmodule(BaseLitModel):
             and "hop_samples" in meta
         )
         if stitch_mode == "none" or not has_grid_meta:
-            return super()._prepare_eval_estimates_and_targets(
-                processed_batch, step_type, dataloader_idx=dataloader_idx
-            )
+            if isinstance(meta, dict) and meta.get("source_count") is not None:
+                return super()._prepare_eval_estimates_and_targets(
+                    processed_batch, step_type, dataloader_idx=dataloader_idx
+                )
+            estimates = processed_batch["estimates"]
+            time_lengths = processed_batch["time_lengths"]
+            max_frames = int(estimates.shape[1])
+            plain_est: list[torch.Tensor] = []
+            for i in range(len(time_lengths)):
+                s_len = int(time_lengths[i].item())
+                v_len = self._sample_length_to_frame_count(
+                    sample_len=s_len, max_frames=max_frames, target_len=max_frames
+                )
+                plain_est.append(estimates[i, :v_len])
+            return plain_est, [], meta.copy() if isinstance(meta, dict) else {}
 
         meta_dict = meta.copy()
         estimates = processed_batch["estimates"]
         time_lengths = processed_batch["time_lengths"]
-        targets = meta_dict["source_count"]
+        targets = meta_dict.get("source_count", None)
         max_frames = int(estimates.shape[1])
         hop_length = (
             int(self.transform.hop_length)
@@ -344,118 +403,166 @@ class OSCmodule(BaseLitModel):
             else 1
         )
 
+        batch_len = len(time_lengths)
         recording_ids = meta_dict["recording_id"]
         start_samples = meta_dict["start_sample"]
         hop_samples_list = meta_dict["hop_samples"]
-        is_last_chunks = meta_dict.get(
-            "is_last_chunk", [False] * len(time_lengths)
-        )
+        is_last_chunks = meta_dict.get("is_last_chunk", [False] * batch_len)
 
         valid_estimates: list[torch.Tensor] = []
         valid_targets: list[torch.Tensor] = []
+        kept_indices: list[int] = []
 
-        for i in range(len(time_lengths)):
+        for i in range(batch_len):
             sample_len = int(time_lengths[i].item())
-            target_i = targets[i].to(estimates.device)
+            if targets is not None and i < len(targets) and targets[i] is not None:
+                target_i: torch.Tensor | None = targets[i].to(estimates.device)
+                target_len = int(target_i.shape[0])
+            else:
+                target_i = None
+                target_len = max_frames
+
             valid_len = self._sample_length_to_frame_count(
                 sample_len=sample_len,
                 max_frames=max_frames,
-                target_len=int(target_i.shape[0]),
+                target_len=target_len,
             )
             est_i = estimates[i, :valid_len]
-            tgt_i = target_i[:valid_len]
+            tgt_i = target_i[:valid_len] if target_i is not None else None
 
             rec_id = str(recording_ids[i])
             start_sample = int(start_samples[i])
             hop_samples = int(hop_samples_list[i])
             is_last_chunk = bool(is_last_chunks[i])
 
-            hop_frames = max(1, min(valid_len, hop_samples // hop_length))
-            overlap_frames = max(0, valid_len - hop_frames)
+            configured_hop_frames = max(1, hop_samples // hop_length)
+            start_frame = start_sample // hop_length
 
             if stitch_mode == "causal_burnin":
-                if start_sample == 0 or overlap_frames == 0:
-                    valid_estimates.append(est_i)
-                    valid_targets.append(tgt_i)
+                state = self._eval_overlap_state.get(step_type)
+                is_same_stream = (
+                    state is not None
+                    and state.get("dataloader_idx", 0) == dataloader_idx
+                    and state.get("recording_id") == rec_id
+                    and start_sample > 0
+                )
+                prev_end = int(state["emitted_end_frame"]) if is_same_stream else 0
+                burnin_frames = (
+                    min(valid_len, max(0, prev_end - start_frame))
+                    if is_same_stream
+                    else 0
+                )
+                emitted_est = est_i[burnin_frames:valid_len]
+                emitted_tgt = (
+                    tgt_i[burnin_frames:valid_len] if tgt_i is not None else None
+                )
+                new_end = max(prev_end, start_frame + valid_len)
+                if is_last_chunk:
+                    self._eval_overlap_state[step_type] = None
                 else:
-                    valid_estimates.append(est_i[overlap_frames:valid_len])
-                    valid_targets.append(tgt_i[overlap_frames:valid_len])
+                    self._eval_overlap_state[step_type] = {
+                        "dataloader_idx": dataloader_idx,
+                        "recording_id": rec_id,
+                        "emitted_end_frame": new_end,
+                    }
 
             elif stitch_mode == "overlap_avg":
-                ov_frames = min(hop_frames, overlap_frames)
                 state = self._eval_overlap_state.get(step_type)
                 is_consecutive = (
                     state is not None
                     and state.get("dataloader_idx", 0) == dataloader_idx
-                    and state["recording_id"] == rec_id
-                    and state["next_start_sample"] == start_sample
-                    and state["tail_logits"].shape[0] == ov_frames
+                    and state.get("recording_id") == rec_id
+                    and state.get("next_start_sample") == start_sample
                 )
 
-                if not is_consecutive or ov_frames == 0:
-                    # First chunk of recording (or no overlap): emit non-overlapping head [:hop_frames]
-                    emitted_est = est_i[:hop_frames]
-                    emitted_tgt = tgt_i[:hop_frames]
+                if is_consecutive:
+                    assert state is not None
+                    prev_tail = state["tail_logits"].to(est_i.device)
+                    n_ov = min(int(prev_tail.shape[0]), valid_len)
+                    avg_ov = 0.5 * (prev_tail[:n_ov] + est_i[:n_ov])
+                    curr_est = torch.cat([avg_ov, est_i[n_ov:valid_len]], dim=0)
                 else:
-                    # Consecutive overlapping chunk: average previous tail with current head [:ov_frames]
-                    prev_tail_logits = state["tail_logits"].to(est_i.device)
-                    avg_overlap = 0.5 * (prev_tail_logits + est_i[:ov_frames])
-                    if hop_frames > ov_frames:
-                        emitted_est = torch.cat(
-                            [avg_overlap, est_i[ov_frames:hop_frames]], dim=0
-                        )
-                    else:
-                        emitted_est = avg_overlap
-                    emitted_tgt = tgt_i[:hop_frames]
+                    curr_est = est_i
 
-                if is_last_chunk or ov_frames == 0:
-                    if valid_len > hop_frames:
-                        emitted_est = torch.cat(
-                            [emitted_est, est_i[hop_frames:valid_len]], dim=0
-                        )
-                        emitted_tgt = torch.cat(
-                            [emitted_tgt, tgt_i[hop_frames:valid_len]], dim=0
-                        )
+                if is_last_chunk or valid_len <= configured_hop_frames:
+                    emitted_est = curr_est
+                    emitted_tgt = tgt_i
                     self._eval_overlap_state[step_type] = None
                 else:
-                    new_tail_logits = (
-                        est_i[hop_frames : hop_frames + ov_frames].detach().clone()
+                    emitted_est = curr_est[:configured_hop_frames]
+                    emitted_tgt = (
+                        tgt_i[:configured_hop_frames] if tgt_i is not None else None
                     )
-                    new_tail_targets = (
-                        tgt_i[hop_frames : hop_frames + ov_frames].detach().clone()
+                    new_tail_logits = (
+                        curr_est[configured_hop_frames:valid_len].detach().clone()
                     )
                     self._eval_overlap_state[step_type] = {
                         "dataloader_idx": dataloader_idx,
                         "recording_id": rec_id,
                         "next_start_sample": start_sample + hop_samples,
                         "tail_logits": new_tail_logits,
-                        "tail_targets": new_tail_targets,
                     }
+            else:
+                emitted_est = est_i
+                emitted_tgt = tgt_i
 
+            if emitted_est.shape[0] > 0:
                 valid_estimates.append(emitted_est)
-                valid_targets.append(emitted_tgt)
+                if emitted_tgt is not None:
+                    valid_targets.append(emitted_tgt)
+                kept_indices.append(i)
+
+        if len(kept_indices) != batch_len:
+            filtered_meta: dict[str, Any] = {}
+            for k, v in meta_dict.items():
+                if isinstance(v, list) and len(v) == batch_len:
+                    filtered_meta[k] = [v[idx] for idx in kept_indices]
+                else:
+                    filtered_meta[k] = v
+            meta_dict = filtered_meta
 
         return valid_estimates, valid_targets, meta_dict
 
     def predict_step(
         self, batch: dict, batch_idx: int, dataloader_idx: int = 0
-    ) -> dict:
-        """
-        Executes a prediction step.
+    ) -> dict[str, Any]:
+        """Executes a sliding-window stitched prediction step.
 
-        Computes the forward pass and returns the processed batch, ensuring 
-        estimates are condensed to binary discrete decisions if configured.
+        Runs the forward pass, applies the same ``overlap_avg`` / ``causal_burnin``
+        stitched emission logic used during ``val``/``test``, and returns CPU-offloaded
+        discrete class count predictions per chunk ready for per-recording concatenation.
 
         Args:
-            batch: The batch of data to process.
-            batch_idx (int): The index of the current batch.
-            dataloader_idx (int): The index of the dataloader.
+            batch (dict): Input batch dictionary from `raw_audio_collate_fn`.
+            batch_idx (int): Current batch index.
+            dataloader_idx (int, optional): Active dataloader index. Defaults to `0`.
 
         Returns:
-            processed_batch: The processed batch, ready for evaluation.
+            dict[str, Any]: Stitched predictions (`"estimates"` list of 1D tensors)
+                and aligned chunk metadata (`"recording_id"`, `"scenario_id"`,
+                `"is_last_chunk"`).
         """
-        predictions = self(batch)
-        est = predictions["estimates"]
-        if est is not None:
-            predictions["estimates"] = torch.argmax(est, dim=-1, keepdim=True)
-        return predictions
+        _ = batch_idx
+        processed_batch = self(batch)
+        stitched_logits, _, meta_dict = self._prepare_eval_estimates_and_targets(
+            processed_batch, "predict", dataloader_idx=dataloader_idx
+        )
+        discrete_chunks = [
+            torch.argmax(est_i, dim=-1).detach().cpu() for est_i in stitched_logits
+        ]
+        batch_len = len(discrete_chunks)
+        compact_meta = {
+            "recording_id": list(
+                meta_dict.get("recording_id", [f"rec_{i}" for i in range(batch_len)])
+            ),
+            "scenario_id": list(
+                meta_dict.get("scenario_id", [f"sc_{i}" for i in range(batch_len)])
+            ),
+            "is_last_chunk": list(
+                meta_dict.get("is_last_chunk", [True] * batch_len)
+            ),
+        }
+        return {
+            "estimates": discrete_chunks,
+            "meta": compact_meta,
+        }

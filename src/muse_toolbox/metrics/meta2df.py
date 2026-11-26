@@ -41,9 +41,21 @@ class META2DF(BaseMetric):
         #     "activity_pattern", "sources", "transform", "generator_id"
         # ]
         self.meta_keys = [
-            "num_sources", "signal_length", "snr", "sirs", "room_dims", 
-            "rt60", "mic_array", "mic_pos", "source_positions", 
-            "noise_file_path", "fixed_time_between_events", 
+            "recording_id",
+            "num_mics",
+            "mic_indices",
+            "num_frames",
+            "num_sources",
+            "signal_length",
+            "snr",
+            "sirs",
+            "room_dims",
+            "rt60",
+            "mic_array",
+            "mic_pos",
+            "source_positions",
+            "noise_file_path",
+            "fixed_time_between_events",
         ]
 
         for key in self.meta_keys:
@@ -65,23 +77,45 @@ class META2DF(BaseMetric):
         """Extracts and stores scenario parameters from batch metadata.
 
         Args:
-            preds: List containing prediction dictionaries and outputs.
-            targets (tuple[dict, torch.Tensor]): Tuple with ground truth references.
+            preds: List containing prediction tensors per item.
+            targets (tuple[dict, torch.Tensor]): Ground truth references.
             meta (dict): Dictionary with scenario metadata like scenario_params.
             dataloader_idx (int): Current dataloader index.
         """
+        _ = targets, dataloader_idx
+        sp_list = meta.get("scenario_params", [])
+        rec_ids = meta.get("recording_id", [])
+        top_num_mics = meta.get("num_mics", [])
+        top_mic_indices = meta.get("mic_indices", [])
+        scenario_id_list = meta.get("scenario_id", [])
+
         for bidx in range(len(preds)):
-            scenario_params = meta["scenario_params"][bidx]
+            raw_sp = sp_list[bidx] if bidx < len(sp_list) else {}
+            scenario_params = raw_sp if isinstance(raw_sp, dict) else {}
 
             for key in self.meta_keys:
                 state_key = "scenario_transform" if key == "transform" else key
-                # Convert complex nested arrays/lists to lists for dataframe compatibility
-                val = scenario_params.get(key, None)
+                if key == "num_frames":
+                    pred_item = preds[bidx]
+                    val = int(pred_item.shape[0]) if hasattr(pred_item, "shape") else 0
+                else:
+                    val = scenario_params.get(key, None)
+                    if val is None and key == "recording_id" and bidx < len(rec_ids):
+                        val = rec_ids[bidx]
+                    elif val is None and key == "num_mics" and bidx < len(top_num_mics):
+                        val = top_num_mics[bidx]
+                    elif val is None and key == "mic_indices" and bidx < len(top_mic_indices):
+                        val = top_mic_indices[bidx]
                 if hasattr(val, "tolist"):
                     val = val.tolist()
                 getattr(self, state_key).append(val)
 
-            self.scenario_ids.append(meta["scenario_id"][bidx])
+            sid = (
+                scenario_id_list[bidx]
+                if bidx < len(scenario_id_list)
+                else f"item_{bidx}"
+            )
+            self.scenario_ids.append(sid)
 
     def compute(self) -> dict | None:
         """Returns a dummy result indicating that metadata was processed.

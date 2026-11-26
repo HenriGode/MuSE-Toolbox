@@ -1,0 +1,16 @@
+# configs/dataset/pra_anf_rand_3-8ch.yaml
+# PRA_ANF Dataset: Random Planar Array (20x20 cm square) dynamically subsampling 3-8 Microphones from Rand8
+
+defaults:
+  - pra_anf_rand_8ch
+
+id: "J3_PRAANF_rand_3-8ch_20cm_SIR10dB"
+precomputed_id: "J3_PRAANF_rand_8ch_20cm_SIR10dB"
+
+mic_count_probs:
+  3: 0.1666666667
+  4: 0.1666666667
+  5: 0.1666666667
+  6: 0.1666666667
+  7: 0.1666666667
+  8: 0.1666666667

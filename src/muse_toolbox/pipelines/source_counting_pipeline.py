@@ -18,6 +18,8 @@ from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
+from muse_toolbox.data.components.collate import raw_audio_collate_fn
+
 log = logging.getLogger(__name__)
 
 _CONFIGS_DATASET_DIR = (
@@ -85,8 +87,67 @@ def _extract_max_sources(ds_cfg: DictConfig | dict[str, Any] | None) -> int | No
     return None
 
 
+def _resolve_eval_ckpt_path(cfg: DictConfig, trainer: Trainer) -> str | None:
+    """Resolves the checkpoint path used for testing and prediction.
+
+    Prefers an explicit ``cfg.ckpt_path`` if configured; otherwise returns
+    ``"best"`` when training ran and a ``ModelCheckpoint`` callback recorded a
+    non-empty ``best_model_path``, falling back to ``None`` for checkpointless
+    or ``fast_dev_run`` executions.
+
+    Args:
+        cfg (DictConfig): Root Hydra configuration.
+        trainer (Trainer): Configured PyTorch Lightning Trainer instance.
+
+    Returns:
+        str | None: Checkpoint specifier passed to ``trainer.test`` / ``trainer.predict``.
+    """
+    explicit_ckpt = cfg.get("ckpt_path", None)
+    if explicit_ckpt:
+        return str(explicit_ckpt)
+    if cfg.get("train", True):
+        ckpt_cb = getattr(trainer, "checkpoint_callback", None)
+        best_model_path = (
+            getattr(ckpt_cb, "best_model_path", "") if ckpt_cb is not None else ""
+        )
+        if best_model_path:
+            return "best"
+    return None
+
+
+def _partition_indices_at_recording_boundaries(ds: Any, num_parts: int = 2) -> list[list[int]]:
+    """Splits dataset evaluation indices without cutting inside a continuous recording.
+
+    Args:
+        ds (Any): Dataset instance exposing optional ``grid`` tuples
+            ``(key, start_idx, is_last_chunk)``.
+        num_parts (int, optional): Target number of partitions. Defaults to ``2``.
+
+    Returns:
+        list[list[int]]: Non-empty lists of contiguous dataset indices.
+    """
+    len_ds = len(cast(Sized, ds))
+    if len_ds == 0:
+        return []
+    grid = getattr(ds, "grid", None)
+    if not isinstance(grid, list) or len(grid) != len_ds or num_parts <= 1:
+        return [list(range(len_ds))]
+
+    end_indices = [idx for idx, entry in enumerate(grid) if bool(entry[2])]
+    if len(end_indices) <= 1:
+        return [list(range(len_ds))]
+
+    target_split = len_ds // num_parts
+    split_end = min(end_indices[:-1], key=lambda idx: abs(idx + 1 - target_split))
+    cut = split_end + 1
+    parts = [list(range(0, cut)), list(range(cut, len_ds))]
+    return [part for part in parts if part]
+
+
 def resolve_test_datamodules(
-    cfg: DictConfig, primary_datamodule: LightningDataModule | None = None
+    cfg: DictConfig,
+    primary_datamodule: LightningDataModule | None = None,
+    single_channel_expansion: bool | None = None,
 ) -> list[tuple[str, LightningDataModule, int | None]]:
     """Resolves one or more test DataModules from `cfg.test_datasets` or `cfg.dataset`.
 
@@ -182,6 +243,7 @@ def resolve_test_datamodules(
                 "eval_min_context_s",
                 "num_workers",
                 "acc_device",
+                "single_channel_expansion",
             ):
                 if (
                     shared_key in primary_ds_cfg
@@ -223,6 +285,13 @@ def resolve_test_datamodules(
                 LightningDataModule,
                 hydra.utils.instantiate(resolved_ds_cfg),
             )
+            if (
+                single_channel_expansion is not None
+                and hasattr(dm, "set_single_channel_expansion")
+            ):
+                cast(Any, dm).set_single_channel_expansion(
+                    bool(single_channel_expansion)
+                )
 
         base_label = alias or config_name or ds_id
         label = base_label
@@ -261,6 +330,17 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
     log.info("Instantiating Model...")
     model_cfg = cast(DictConfig, cfg.get("model"))
     model: LightningModule = cast(LightningModule, hydra.utils.instantiate(model_cfg))
+
+    model_is_single_channel: bool | None = (
+        bool(cast(Any, model).is_single_channel_system)
+        if hasattr(model, "is_single_channel_system")
+        else None
+    )
+    if (
+        model_is_single_channel is not None
+        and hasattr(datamodule, "set_single_channel_expansion")
+    ):
+        cast(Any, datamodule).set_single_channel_expansion(model_is_single_channel)
     
     # 3. Setup Logger
     logger: Logger | None = None
@@ -297,7 +377,9 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
     if cfg.get("test", True):
         log.info("Starting testing...")
         test_entries = resolve_test_datamodules(
-            cfg, primary_datamodule=datamodule
+            cfg,
+            primary_datamodule=datamodule,
+            single_channel_expansion=model_is_single_channel,
         )
         test_names: list[str] = []
         test_max_sources: list[int | None] = []
@@ -328,15 +410,18 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
                 dataset_max_sources=test_max_sources,
             )
 
-        _ = trainer.test(model, dataloaders=test_dataloaders)
-        
+        test_ckpt_path = _resolve_eval_ckpt_path(cfg, trainer)
+        _ = trainer.test(
+            model, dataloaders=test_dataloaders, ckpt_path=test_ckpt_path
+        )
+
     # 7. Predict and Save (Optional)
     predict_flag = cfg.get("predict", False)
     predictions_dir = cast(str | None, cfg.get("predictions_dir", None))
-    
+
     if predict_flag:
         predict_splits = cfg.get("predict_splits", ["test"])
-        
+
         # Determine base_dir for dynamic resolution
         try:
             from hydra.core.hydra_config import HydraConfig
@@ -344,74 +429,102 @@ def run_source_counting_pipeline(cfg: DictConfig) -> str | None:
         except Exception:
             base_dir = str(trainer.default_root_dir)
 
-        # Determine checkpoint path (use best if available)
-        ckpt_path = cast(str | None, "best" if cfg.get("train", True) else None)
-        
+        ckpt_path = _resolve_eval_ckpt_path(cfg, trainer)
+
         for split in predict_splits:
             if predictions_dir is None:
                 split_predictions_dir = os.path.join(base_dir, split, "predictions")
             else:
                 split_predictions_dir = predictions_dir
-                
-            log.info(f"Running prediction for split '{split}' and saving results to {split_predictions_dir}...")
+
+            log.info(
+                f"Running stitched prediction for split '{split}' and saving results to {split_predictions_dir}..."
+            )
             os.makedirs(split_predictions_dir, exist_ok=True)
-            
+
             # Setup datamodule for the split
             ds = getattr(datamodule, f"{split}_ds", None)
             if ds is None:
                 datamodule.setup(split)
                 ds = getattr(datamodule, f"{split}_ds", None)
-                
+
             if ds is None:
-                raise ValueError(f"DataModule did not create a '{split}_ds' attribute during setup('{split}').")
-                
-            # Split dataset into two halves to avoid OOM
-            len_ds = len(cast(Sized, ds))
-            split_idx = len_ds // 2
-            indices_parts = [
-                list(range(0, split_idx)),
-                list(range(split_idx, len_ds)),
-            ]
+                raise ValueError(
+                    f"DataModule did not create a '{split}_ds' attribute during setup('{split}')."
+                )
+
+            indices_parts = _partition_indices_at_recording_boundaries(ds, num_parts=2)
+            rec_buffers: dict[str, list[torch.Tensor]] = {}
 
             for i, indices in enumerate(indices_parts):
                 if not indices:
                     continue
 
-                log.info(f"Predicting part {i+1}/2 ({len(indices)} samples) for '{split}'...")
-                subset_ds = torch.utils.data.Subset(cast("torch.utils.data.Dataset[object]", ds), indices)
+                log.info(
+                    f"Predicting part {i + 1}/{len(indices_parts)} ({len(indices)} chunks) for '{split}'..."
+                )
+                subset_ds = torch.utils.data.Subset(
+                    cast("torch.utils.data.Dataset[object]", ds), indices
+                )
                 subset_dl = torch.utils.data.DataLoader(
                     subset_ds,
-                    batch_size=getattr(datamodule, "batch_size", 1),
+                    batch_size=1,
                     num_workers=getattr(datamodule, "num_workers", 0),
                     shuffle=False,
-                    collate_fn=getattr(cast(object, ds), "collate_fn", None),
+                    collate_fn=raw_audio_collate_fn,
                 )
-                
-                predictions = trainer.predict(model, dataloaders=subset_dl, ckpt_path=ckpt_path)
-                
+
+                predictions = trainer.predict(
+                    model, dataloaders=subset_dl, ckpt_path=ckpt_path
+                )
+
                 if isinstance(predictions, list):
                     for batch in predictions:
                         if isinstance(batch, dict) and "estimates" in batch:
-                            est_activity = batch["estimates"]
-                            scenario_ids = cast(
-                                list[str], batch.get("meta", {}).get("scenario_id", [])
+                            est_chunks = batch["estimates"]
+                            rec_ids = cast(
+                                list[str],
+                                batch.get("meta", {}).get("recording_id", []),
                             )
-                            for idx, sid in enumerate(scenario_ids):
-                                save_path = os.path.join(
-                                    split_predictions_dir, f"{sid}.pt"
+                            is_last_flags = cast(
+                                list[bool],
+                                batch.get("meta", {}).get(
+                                    "is_last_chunk", [True] * len(est_chunks)
+                                ),
+                            )
+                            for est_c, rec_id, is_last in zip(
+                                est_chunks, rec_ids, is_last_flags
+                            ):
+                                rec_buffers.setdefault(str(rec_id), []).append(
+                                    est_c.cpu()
                                 )
-                                torch.save(est_activity[idx].cpu(), save_path)
+                                if is_last:
+                                    full_pred = torch.cat(
+                                        rec_buffers.pop(str(rec_id)), dim=0
+                                    )
+                                    save_path = os.path.join(
+                                        split_predictions_dir, f"{rec_id}.pt"
+                                    )
+                                    torch.save(full_pred, save_path)
                         else:
                             log.warning(
                                 "Prediction batch does not match expected dict format with 'estimates'."
                             )
-                
-                # Cleanup memory after each chunk
+
                 del predictions
                 _ = gc.collect()
-                torch.cuda.empty_cache()
-                        
-            log.info(f"Predictions for '{split}' successfully saved to {split_predictions_dir}.")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            # Flush any remaining recording buffers if is_last_chunk was absent
+            for rec_id, chunks in rec_buffers.items():
+                full_pred = torch.cat(chunks, dim=0)
+                save_path = os.path.join(split_predictions_dir, f"{rec_id}.pt")
+                torch.save(full_pred, save_path)
+
+            log.info(
+                f"Stitched predictions for '{split}' successfully saved to {split_predictions_dir}."
+            )
             
         if predictions_dir is not None:
             return predictions_dir

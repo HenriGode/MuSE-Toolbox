@@ -78,6 +78,11 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
         return False
 
     @property
+    def is_single_channel_input(self) -> bool:
+        """Returns ``True`` when configured for single-channel reference mode."""
+        return self.mode == "ref"
+
+    @property
     def signature(self) -> str:
         sign = (
             f"LogMel"
@@ -120,8 +125,10 @@ class LogMel_Feature_Extractor(BaseFeatureExtractor):
         log_mel = torch.log(mel_spec + self.log_offset)
 
         if self.mode == "ref":
-            # (B, 1, n_mels, T)
-            return log_mel[:, self.ref_channel:self.ref_channel+1, :, :]
+            # (B, 1, n_mels, T); if dataset pre-sliced to 1 channel, select index 0 safely
+            if log_mel.shape[1] == 1:
+                return log_mel[:, :1, :, :]
+            return log_mel[:, self.ref_channel : self.ref_channel + 1, :, :]
         elif self.mode == "all":
             # (B, M, n_mels, T)
             return log_mel

@@ -70,6 +70,12 @@ class StackedFeatureExtractor(BaseFeatureExtractor):
         return any(e.is_trainable for e in self._extractors)
 
     @property
+    def is_single_channel_input(self) -> bool:
+        """Returns ``True`` only when all sub-extractors consume a single channel."""
+        extractors = list(self._extractors)
+        return bool(extractors) and all(e.is_single_channel_input for e in extractors)
+
+    @property
     def uses_stft(self) -> bool:
         # If any extractor uses STFT, we might say this uses STFT,
         # but really it depends on what the sub-extractors need.

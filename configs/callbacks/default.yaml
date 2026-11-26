@@ -22,7 +22,7 @@ complexity_profiler:
 early_stopping:
   _target_: lightning.pytorch.callbacks.EarlyStopping
   monitor: "val/loss"
-  patience: 10
+  patience: 15
   mode: "min"
 
 save_test_results:

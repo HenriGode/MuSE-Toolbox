@@ -108,6 +108,9 @@
 \newacronym{ReLU}{ReLU}{rectified linear unit}
 \newacronym{PE}{PE}{positional encoding}
 \newacronym{TE}{TE}{Transformer Encoder}
+\newacronym{AP}{AP}{average precision}
+\newacronym{OSD}{OSD}{overlapped speech detection}
+\newacronym{FFT}{FFT}{fast Fourier transform}
 
 %-------------------------------------
 
@@ -276,15 +279,15 @@ The core objective of this work is to estimate the instantaneous number of activ
   \widehat{K}_t = \mathcal{C}\left( \left\{ \mathbf{y}_{\tau, f} \right\}_{\tau=1, f=1}^{t, F} \right) \quad \forall t \in \{1, \ldots, T\}.
   \label{eq:strict_causality_definition}
 \end{align}
-To enable low-latency operation in real-time acoustic applications, we impose a strict \gls{STFT} frame-level causality constraint: the estimation at time frame $t$ is conditioned exclusively on current and past observations up to frame $t$ ($\tau \leq t$), with zero look-ahead into future frames ($\tau > t$). All neural network architectures evaluated in this work are designed to strictly comply with~\Cref{eq:strict_causality_definition}.
+To enable low-latency operation in real-time acoustic applications, our proposed estimators target a strict \gls{STFT} frame-level causality constraint: the estimation at time frame $t$ is conditioned exclusively on current and past observations up to frame $t$ ($\tau \leq t$), with zero look-ahead into future frames ($\tau > t$), as defined in~\Cref{eq:strict_causality_definition} (while non-causal baseline counterparts with $\texttt{causal} = \texttt{False}$ are also evaluated for offline reference).
 
-We formulate source counting as an integer classification problem with $(K_{\mathrm{max}} + 1)$ mutually exclusive classes, where $K_t = 0$ corresponds to source absence (ambient noise only). To preserve strict sample-level causality without future look-ahead relative to the \gls{STFT} analysis window, the frame-level ground-truth source count $K_t$ at frame $t$ is evaluated at the newest sample $l = t L_{\mathrm{hop}}$ entering the analysis buffer. For a given audio segment comprising $T$ time frames, the ground-truth source count sequence is represented as a $T$-dimensional target vector:
+We formulate source counting as an integer classification problem with $(K_{\mathrm{max}} + 1)$ mutually exclusive classes, where $K_t = 0$ corresponds to source absence (ambient noise only). Each sound source $k$ first induces a sample-level binary activity sequence $v_{k,l} \in \{0, 1\}$ ($l \in \{1, \dots, L\}$) at sampling rate $f_s$, obtained either by acoustic energy thresholding on isolated sound source signals or by mapping manual annotation intervals $[t_{\mathrm{start}}, t_{\mathrm{end}})$ onto 1-based sample indices $\lfloor t_{\mathrm{start}} f_s \rfloor + 1 \le l \le \lfloor t_{\mathrm{end}} f_s \rfloor$. Summing active indicators across sources produces the sample-level count $K_l^{(\mathrm{samp})} = \min(K_{\mathrm{max}}, \sum_k v_{k,l})$. To preserve strict sample-level causality without future look-ahead relative to the \gls{STFT} analysis window, the frame-level ground-truth source count $K_t$ at time frame $t \in \{1, \dots, T\}$ is evaluated at the newest sample $l = t L_{\mathrm{hop}}$ entering the analysis buffer, i.e., $K_t = K_{t L_{\mathrm{hop}}}^{(\mathrm{samp})}$. For a given audio segment comprising $T$ time frames, the ground-truth source count sequence is represented as a $T$-dimensional target vector:
 \begin{align}
   \mathbf{k} = \begin{bmatrix} K_1 & K_2 & \cdots & K_T \end{bmatrix}^{\mathrm{T}} \in \{0, 1, \ldots, K_{\mathrm{max}}\}^{T}.
   \label{eq:target_vector}
 \end{align}
 
-It is essential to distinguish the acoustic ground truth used in this paper from conventional text-driven linguistic alignments commonly found in the speech diarization literature. Traditional diarization and voice activity detection benchmarks often define ground-truth activity using linguistic forced-alignment tools (e.g., the Montreal Forced Aligner~\cite{mcauliffe2017montreal}), which label speech activity strictly based on phonetically transcribed text. Consequently, non-linguistic vocalizations (such as coughs, throat clearings, laughter, and heavy breathing) as well as non-speech acoustic sound events are labeled as inactive, even though substantial directional acoustic power impinges upon the microphone array. In contrast, in this work we define $K_t$ based on \emph{acoustic sound presence}: any sound source producing energy above an acoustic presence threshold relative to the background noise is classified as active, ensuring the model reflects the physical reality of the sound field.
+It is essential to distinguish the acoustic ground truth used on controlled corpora from conventional text-driven linguistic alignments in the diarization literature. Traditional forced-alignment tools (e.g., the Montreal Forced Aligner~\cite{mcauliffe2017montreal}) label speech activity strictly based on phonetically transcribed text, so non-linguistic vocalizations (such as coughs, throat clearings, laughter, and heavy breathing) and non-speech acoustic events are labeled as inactive despite radiating directional acoustic power. Accordingly, on all simulated and measured-\gls{RIR} datasets where isolated clean sound source components are accessible, we define $v_{k,l}$ strictly via \emph{acoustic sound presence} above an energy threshold relative to the background noise, ensuring the labels reflect the physical sound field. Conversely, on real-world meeting recordings where close-talk microphones exhibit inter-speaker acoustic crosstalk, official human close-talk annotations provide $v_{k,l}$ and preserve direct comparability with~\cite{cornell2022overlapped}.
 
 \begin{figure}[t]
   \centering
@@ -561,8 +564,9 @@ In this section, we describe the core \gls{DNN} architecture shown in~\Cref{fig:
     \node (dots) [right=0.22cm of te1, font=\normalsize] {$\cdots$};
     \node (teR) [te_block, right=0.22cm of dots] {\acrshort{TE} Block\\($r=R$)};
 
-    \node (conv_out) [conv_block, right=0.68cm of teR] {Conv $1\times 1$};
-    \node (upsample) [block, right=0.78cm of conv_out] {Temporal\\Upsampling};
+    \node (ln_out) [norm_block, right=0.52cm of teR] {\acrshort{LN}};
+    \node (conv_out) [conv_block, right=0.40cm of ln_out] {Conv $1\times 1$};
+    \node (upsample) [block, right=0.72cm of conv_out] {Temporal\\Upsampling};
     \node (softmax) [out_block, right=0.45cm of upsample] {Softmax};
     \node (argmax) [out_block, right=0.45cm of softmax] {$\argmax$};
     \node (out) [right=0.35cm of argmax] {$\widehat{K}_t$};
@@ -576,7 +580,8 @@ In this section, we describe the core \gls{DNN} architecture shown in~\Cref{fig:
     \draw [line] (sum_pe) -- node[lbl] {$\mathbf{H}^{(0)}$} (te1);
     \draw [line] (te1) -- (dots);
     \draw [line] (dots) -- (teR);
-    \draw [line] (teR) -- node[lbl] {$\mathbf{H}^{(R)}$} (conv_out);
+    \draw [line] (teR) -- node[lbl] {$\mathbf{H}^{(R)}$} (ln_out);
+    \draw [line] (ln_out) -- (conv_out);
     \draw [line] (conv_out) -- node[lbl] {$\mathbf{L}^{(\mathrm{sub})}$} (upsample);
     \draw [line] (upsample) -- node[lbl] {$\mathbf{L}$} (softmax);
     \draw [line] (softmax) -- node[lbl] {$\widehat{\mathbf{P}}$} (argmax);
@@ -719,13 +724,13 @@ In the second residual sub-block, each column $\tilde{\mathbf{h}}_{t'}^{(r)} \in
   \mathbf{h}_{t'}^{(r)} = \tilde{\mathbf{h}}_{t'}^{(r)} + \mathbf{W}_2^{(r)} \mathrm{ReLU}\!\left\{ \mathbf{W}_1^{(r)} \mathrm{LN}\!\left\{\tilde{\mathbf{h}}_{t'}^{(r)}\right\} + \mathbf{b}_1^{(r)} \right\} + \mathbf{b}_2^{(r)},
   \label{eq:ffn_residual}
 \end{align}
-where $\mathbf{W}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times D_{\mathrm{emb}}}$ and $\mathbf{b}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times 1}$ expand the representation to an inner hidden dimension $D_{\mathrm{FFN}}$, $\mathrm{ReLU}\{x\} = \max(0, x)$ is applied element-wise, and $\mathbf{W}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{FFN}}}$ and $\mathbf{b}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ project the representation back to dimension $D_{\mathrm{emb}}$. During training, dropout regularization with probability $p_{\mathrm{drop}} \in [0, 1)$ is applied after the sinusoidal \gls{PE}~\cite{vaswani2017attention}, to the attention weights $\mathbf{A}_h^{(r)}$ and after the \gls{MHA} output projection~\cite{cornell2022overlapped,vaswani2017attention}, and after the \gls{ReLU} activation in the \gls{FFN}~\cite{cornell2022overlapped}.
+where $\mathbf{W}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times D_{\mathrm{emb}}}$ and $\mathbf{b}_1^{(r)} \in \mathbb{R}^{D_{\mathrm{FFN}} \times 1}$ expand the representation to an inner hidden dimension $D_{\mathrm{FFN}}$, $\mathrm{ReLU}\{x\} = \max(0, x)$ is applied element-wise, and $\mathbf{W}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{FFN}}}$ and $\mathbf{b}_2^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ project the representation back to dimension $D_{\mathrm{emb}}$. Following~\cite{vaswani2017attention,cornell2022overlapped}, dropout regularization during training with uniform probability $p_{\mathrm{drop}} \in [0, 1)$ is applied at four locations: after adding the sinusoidal \gls{PE} in~\Cref{eq:pos_enc_add} and on the attention weights $\mathbf{A}_h^{(r)}$ (standard from~\cite{vaswani2017attention}), as well as after the \gls{MHA} output projection prior to residual addition in~\Cref{eq:mha_residual} and after the \gls{ReLU} activation inside the \gls{FFN} in~\Cref{eq:ffn_residual} (without an additional dropout after $\mathbf{W}_2^{(r)}$, matching~\cite{cornell2022overlapped}).
 
 \subsubsection{Output Projection, Temporal Upsampling, and Sliding-Window Inference}
 \label{sec:output_stage}
-After the $R$-th \gls{TE} block, a final point-wise ($1 \times 1$) convolution maps each $D_{\mathrm{emb}}$-dimensional vector $\mathbf{h}_{t'}^{(R)}$ at subsampled frame $t' \in \{1, \dots, T'\}$ to a vector of $(K_{\mathrm{max}} + 1)$ unnormalized class logits:
+Because the Pre-\gls{LN} residual path leaves the cumulative hidden state $\mathbf{H}^{(R)}$ unnormalized after the $R$-th \gls{TE} block, a final feature-wise \gls{LN}~\cite{nguyen2019transformers} (implicitly following the Pre-\gls{LN} design of~\cite{nguyen2019transformers} cited in~\cite{cornell2022overlapped}, though omitted from~\cite[Fig.~2]{cornell2022overlapped}) is applied prior to a point-wise ($1 \times 1$) output convolution mapping each subsampled frame $t' \in \{1, \dots, T'\}$ to $(K_{\mathrm{max}} + 1)$ unnormalized class logits:
 \begin{align}
-  \bm{\ell}_{t'}^{(\mathrm{sub})} = \mathbf{W}_{\mathrm{out}} \mathbf{h}_{t'}^{(R)} + \mathbf{b}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times 1},
+  \bm{\ell}_{t'}^{(\mathrm{sub})} = \mathbf{W}_{\mathrm{out}} \, \mathrm{LN}\!\left\{\mathbf{h}_{t'}^{(R)}\right\} + \mathbf{b}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times 1},
   \label{eq:output_conv}
 \end{align}
 with $\mathbf{W}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times D_{\mathrm{emb}}}$ and $\mathbf{b}_{\mathrm{out}} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times 1}$, forming $\mathbf{L}^{(\mathrm{sub})} = \begin{bmatrix} \bm{\ell}_1^{(\mathrm{sub})} & \cdots & \bm{\ell}_{T'}^{(\mathrm{sub})} \end{bmatrix} \in \mathbb{R}^{(K_{\mathrm{max}} + 1) \times T'}$.
@@ -826,7 +831,7 @@ The unified forward pass of the single-stream Transformer covering both the non-
       \STATE Concatenate $\{\mathbf{O}_h^{(r)}\}_{h=1}^{N_{\mathrm{head}}}$, apply $\mathbf{W}_O^{(r)}, \mathbf{b}_O^{(r)}$ (with training dropout $p_{\mathrm{drop}}$), and add residual $\mathbf{H}^{(r-1)}$ via~\Cref{eq:mha_residual} to obtain $\widetilde{\mathbf{H}}^{(r)}$.
       \STATE For $t' = 1, \dots, T'$, apply \acrshort{LN}~\Cref{eq:layernorm_def} and the two-layer \acrshort{FFN} (with training dropout $p_{\mathrm{drop}}$ after \acrshort{ReLU}) plus residual addition via~\Cref{eq:ffn_residual} to obtain $\mathbf{h}_{t'}^{(r)}$.
     \ENDFOR
-    \STATE \textbf{Output projection \& upsampling:} Compute subsampled logits $\bm{\ell}_{t'}^{(\mathrm{sub})}$ for $t' = 1, \dots, T'$ via~\Cref{eq:output_conv}, restore native resolution $T$ via piecewise linear interpolation~\Cref{eq:linear_upsampling} if $\texttt{causal} = \texttt{False}$ or causal zero-order hold~\Cref{eq:causal_upsampling} if $\texttt{causal} = \texttt{True}$, apply sliding-window stitching (\Cref{eq:sliding_window_logit_avg} if $\texttt{causal} = \texttt{False}$, or causal burn-in trimming if $\texttt{causal} = \texttt{True}$), and compute $\widehat{\mathbf{p}}_t$ and $\widehat{K}_t$ via~\Cref{eq:softmax_posteriors,eq:class_posterior_k,eq:argmax_source_count}.
+    \STATE \textbf{Output projection \& upsampling:} Apply final \acrshort{LN}~\Cref{eq:layernorm_def} to $\mathbf{h}_{t'}^{(R)}$ and compute subsampled logits $\bm{\ell}_{t'}^{(\mathrm{sub})}$ via~\Cref{eq:output_conv}, restore native resolution $T$ via piecewise linear interpolation~\Cref{eq:linear_upsampling} if $\texttt{causal} = \texttt{False}$ or causal zero-order hold~\Cref{eq:causal_upsampling} if $\texttt{causal} = \texttt{True}$, apply sliding-window stitching (\Cref{eq:sliding_window_logit_avg} if $\texttt{causal} = \texttt{False}$, or causal burn-in trimming if $\texttt{causal} = \texttt{True}$), and compute $\widehat{\mathbf{p}}_t$ and $\widehat{K}_t$ via~\Cref{eq:softmax_posteriors,eq:class_posterior_k,eq:argmax_source_count}.
   \end{algorithmic}
 \end{algorithm}
 
@@ -845,7 +850,7 @@ The unified forward pass of the single-stream Transformer covering both the non-
     Number of \acrshort{TE} blocks & $R$ & Depth of stacked Pre-\acrshort{LN} Transformer Encoder blocks ($R \in \mathbb{N}_+$) & $R \in \{2, \mathbf{4}, 8\}$ \\
     Number of attention heads & $N_{\mathrm{head}}$ & Parallel self-attention heads per \acrshort{MHA} layer ($D_{\mathrm{head}} = D_{\mathrm{emb}} / N_{\mathrm{head}}$) & $N_{\mathrm{head}} \in \{\mathbf{4}, 8, 16\}$ \\
     \acrshort{FFN} hidden dimension & $D_{\mathrm{FFN}}$ & Inner expansion width of the position-wise \acrshort{FFN} ($D_{\mathrm{FFN}} \in \mathbb{N}_+$) & $D_{\mathrm{FFN}} \in \{\mathbf{1024}, 2048\}$ \\
-    Dropout probability & $p_{\mathrm{drop}}$ & Training dropout after \acrshort{PE}, on $\mathbf{A}_h^{(r)}$, after \acrshort{MHA} projection, and after \acrshort{ReLU} & $\mathbf{0.2}$ (tuned on development set) \\
+    Dropout probability & $p_{\mathrm{drop}}$ & Training dropout after \acrshort{PE}, on $\mathbf{A}_h^{(r)}$, after \acrshort{MHA} projection, and after \acrshort{FFN} \acrshort{ReLU} & $\mathbf{0.2}$ (tuned on development set) \\
     \bottomrule
   \end{tabular}
 \end{table*}
@@ -932,7 +937,7 @@ The unified forward pass of the single-stream Transformer covering both the non-
 
 When combining single-channel spectral cues with multi-microphone spatial cues in the baseline Transformer architecture, Cornell et al.~\cite{cornell2022overlapped} investigated two distinct fusion strategies: early fusion via input concatenation and late fusion via \gls{FiLM}~\cite{perez2018film}, both depicted in~\Cref{fig:feature_fusion}.
 
-Let $\mathbf{Z}_{\mathrm{spec}} = \begin{bmatrix} \mathbf{z}_1^{(\mathrm{spec})} & \cdots & \mathbf{z}_T^{(\mathrm{spec})} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{spec}} \times T}$ denote the single-channel spectral feature sequence extracted from a reference microphone $m_{\mathrm{ref}}$ (e.g., $\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{ref})}$ with $D_{\mathrm{spec}} = 3F$, or $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$ with $D_{\mathrm{spec}} = D_{\mathrm{mel}}$). In the baseline multi-channel framework of~\cite{cornell2022overlapped}, pairwise spatial features extracted across $P$ selected microphone pairs (such as $\mathbf{Z}_{\mathrm{CSIPD}} \in \mathbb{R}^{P \times 2F \times T}$ or $\mathbf{Z}_{\mathrm{PSC}} \in \mathbb{R}^{P \times 3F \times T}$) are flattened across the pair dimension into a single spatial feature vector per time frame $t$:
+Let $\mathbf{Z}_{\mathrm{spec}} = \begin{bmatrix} \mathbf{z}_1^{(\mathrm{spec})} & \cdots & \mathbf{z}_T^{(\mathrm{spec})} \end{bmatrix} \in \mathbb{R}^{D_{\mathrm{spec}} \times T}$ denote the single-channel spectral feature sequence extracted from a reference microphone $m_{\mathrm{ref}}$ (e.g., $\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{ref})}$ with $D_{\mathrm{spec}} = 3F$, or $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$ with $D_{\mathrm{spec}} = D_{\mathrm{mel}}$; in fixed-array baselines $m_{\mathrm{ref}} = 1$). Unlike Cornell et al.~\cite{cornell2022overlapped}, who restricted circular-array \gls{AMI} spatial features to the $4$ (or $2$) opposing microphone pairs with maximum inter-microphone spacing, we compute pairwise spatial features across all $P = M(M-1)/2$ unique pairs ($P = 28$ for $M = 8$). In the baseline multi-channel framework of~\cite{cornell2022overlapped}, pairwise spatial features ($\mathbf{Z}_{\mathrm{CSIPD}} \in \mathbb{R}^{P \times 2F \times T}$ or $\mathbf{Z}_{\mathrm{PSC}} \in \mathbb{R}^{P \times 3F \times T}$) are flattened across the pair dimension into a single spatial feature vector per time frame $t$:
 \begin{align}
   \mathbf{z}_t^{(\mathrm{spat})} = \begin{bmatrix} \left(\mathbf{z}_{1,t}^{(\mathrm{spat})}\right)^{\mathrm{T}} & \cdots & \left(\mathbf{z}_{P,t}^{(\mathrm{spat})}\right)^{\mathrm{T}} \end{bmatrix}^{\mathrm{T}} \in \mathbb{R}^{D_{\mathrm{spat}} \times 1},
   \label{eq:flattened_spatial_vec}
@@ -969,12 +974,12 @@ where $\mathbf{W}_{\mathrm{in}}^{(\mathrm{early})} \in \mathbb{R}^{D_{\mathrm{em
 \label{sec:late_fusion_film}
 To avoid compressing spatial information in the initial bottleneck and to provide spatial cues directly to deeper layers, late fusion injects $\bar{\mathbf{u}}_{t'}^{(\mathrm{spat})}$ prior to each \gls{TE} block $r \in \{1, \dots, R\}$ via \gls{FiLM}~\cite{perez2018film,cornell2022overlapped}, as depicted in~\Cref{fig:feature_fusion}(b). In this configuration, the initial embedding sequence $\mathbf{H}^{(0)} \in \mathbb{R}^{D_{\mathrm{emb}} \times T'}$ is computed exclusively from the normalized spectral stream $\bar{\mathbf{u}}_{t'}^{(\mathrm{spec})}$ via~\Cref{eq:bottleneck_conv,eq:pos_enc_add}.
 
-At the entrance of each \gls{TE} block $r \in \{1, \dots, R\}$, a layer-specific \gls{FiLM} generator projects the normalized spatial conditioning vector $\bar{\mathbf{u}}_{t'}^{(\mathrm{spat})}$ into a feature-wise scaling vector $\bm{\gamma}_{t'}^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ and shifting vector $\bm{\beta}_{t'}^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$:
+At the entrance of each \gls{TE} block $r \in \{1, \dots, R\}$, a layer-specific \gls{FiLM} generator projects the normalized spatial conditioning vector $\bar{\mathbf{u}}_{t'}^{(\mathrm{spat})}$ into a residual identity-centered feature-wise scaling vector $\bm{\gamma}_{t'}^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ and shifting vector $\bm{\beta}_{t'}^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$:
 \begin{align}
-  \bm{\gamma}_{t'}^{(r,\mathrm{FiLM})} &= \mathbf{W}_{\gamma}^{(r)} \bar{\mathbf{u}}_{t'}^{(\mathrm{spat})} + \mathbf{b}_{\gamma}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \label{eq:film_gamma} \\
+  \bm{\gamma}_{t'}^{(r,\mathrm{FiLM})} &= \mathbf{1}_{D_{\mathrm{emb}}} + \mathbf{W}_{\gamma}^{(r)} \bar{\mathbf{u}}_{t'}^{(\mathrm{spat})} + \mathbf{b}_{\gamma}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \label{eq:film_gamma} \\
   \bm{\beta}_{t'}^{(r,\mathrm{FiLM})} &= \mathbf{W}_{\beta}^{(r)} \bar{\mathbf{u}}_{t'}^{(\mathrm{spat})} + \mathbf{b}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}, \label{eq:film_beta}
 \end{align}
-with learnable projection matrices $\mathbf{W}_{\gamma}^{(r)}, \mathbf{W}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{cat,spat}}}$ and bias vectors $\mathbf{b}_{\gamma}^{(r)}, \mathbf{b}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$. The hidden representation $\mathbf{h}_{t'}^{(r-1)}$ entering the $r$-th \gls{TE} block is then modulated via an element-wise affine transformation~\cite{perez2018film}:
+with learnable projection matrices $\mathbf{W}_{\gamma}^{(r)}, \mathbf{W}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times D_{\mathrm{cat,spat}}}$ initialized with small zero-mean Gaussian weights (standard deviation $0.01 / \sqrt{D_{\mathrm{cat,spat}}}$) and bias vectors $\mathbf{b}_{\gamma}^{(r)}, \mathbf{b}_{\beta}^{(r)} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}$ initialized to zero. Compared to the standard uncentered affine formulation~\cite{perez2018film,cornell2022overlapped}, centering $\bm{\gamma}_{t'}^{(r,\mathrm{FiLM})}$ around $\mathbf{1}_{D_{\mathrm{emb}}}$ ensures an unattenuated identity pass-through across all $R$ blocks at initialization (preventing variance collapse for high-dimensional spatial conditioning vectors) and causes decoupled weight decay on $\mathbf{W}_{\gamma}^{(r)}$ to regularize toward identity rather than zero. The hidden representation $\mathbf{h}_{t'}^{(r-1)}$ entering the $r$-th \gls{TE} block is then modulated via element-wise scaling and shifting:
 \begin{align}
   \mathbf{h}_{t'}^{(r-1,\mathrm{FiLM})} &= \mathrm{FiLM}\!\left\{\mathbf{h}_{t'}^{(r-1)}, \bar{\mathbf{u}}_{t'}^{(\mathrm{spat})}\right\} \nonumber \\
   &= \bm{\gamma}_{t'}^{(r,\mathrm{FiLM})} \odot \mathbf{h}_{t'}^{(r-1)} + \bm{\beta}_{t'}^{(r,\mathrm{FiLM})} \in \mathbb{R}^{D_{\mathrm{emb}} \times 1}.
@@ -1035,10 +1040,9 @@ Finally, the \gls{AMI} dataset consists of real-world acoustic recordings captur
     \hline
     \textbf{Dataset} & \textbf{Generation Method} & \textbf{Array Geometry} & \textbf{Channels} \\
     \hline
-    Circ8 & Simulated (Image Source) & Uniform Circular ($r = \SI{10}{\centi\meter}$) & $8$ \\
-    Circ3-8 & Simulated (Image Source) & Uniform Circular ($r = \SI{10}{\centi\meter}$) & $3$ to $8$ \\
-    Rand8 & Simulated (Image Source) & Randomized Planar (\SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} area) & $8$ \\
-    Rand3-8 & Simulated (Image Source) & Randomized Planar (\SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} area) & $3$ to $8$ \\
+    Circ8 & Simulated (Image Source) & Uniform Circular ($r = \SI{10}{\centi\meter}$, $\SI{20}{\centi\meter}$ diameter) & $8$ \\
+    Rand8 & Simulated (Image Source) & Randomized Planar (\SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} square) & $8$ \\
+    Rand3-8 & Dynamic Subset of Rand8 & Randomized Planar (\SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} square) & $3$ to $8$ \\
     \gls{BRUDEX} & Measured RIRs \& Recorded Noise & Dummy Head (BTE and In-Ear) & $2$ to $6$ \\
     \gls{AMI} & Real-World Recordings & Uniform Circular ($r = \SI{10}{\centi\meter}$) \& Uniform Linear & $4$, $8$, and $10$ \\
     \hline
@@ -1066,8 +1070,7 @@ The acoustic scenarios are constructed using clean speech utterances
 from the LibriSpeech corpus~\cite{panayotov2015librispeech}.
 Specifically, the \texttt{train-clean-360} split is used for training,
 the \texttt{dev-clean} split for validation, and the \texttt{test-clean} split for testing.
-Each simulated acoustic scenario has a duration of \SI{120.0}{\second}
-and features up to $4$ conversational partners.
+Each synthetic dataset comprises $2400$ training scenarios (\SI{80}{\hour}), $300$ validation scenarios (\SI{10}{\hour}), and $300$ testing scenarios (\SI{10}{\hour}), each with a duration of \SI{120.0}{\second} matching the unique recording duration of the \gls{AMI} partitions and featuring up to $4$ conversational partners.
 The speakers randomly start and stop talking, creating highly overlapping speech.
 A scenario typically begins with a short period containing only background noise,
 lasting between \SI{1.0}{\second} and \SI{5.0}{\second}, before the speakers begin their conversation.
@@ -1080,12 +1083,10 @@ from each other and the microphone array, and are separated by a minimum directi
 of arrival of \SI{30}{\degree} relative to the center of the array.
 
 To investigate generalization capabilities across different hardware configurations,
-the four distinct synthetic datasets detailed in Table~\ref{tab:datasets_overview} are constructed.
-These datasets are defined along two dimensions:
-the array geometry (uniform circular arrays with a fixed radius of \SI{10}{\centi\meter}
-versus randomized planar geometries uniformly distributed within a \SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} square area)
-and the number of microphone channels
-(a fixed count of $8$ microphones versus a variable count uniformly sampled between $3$ and $8$ channels).
+the three synthetic dataset configurations detailed in Table~\ref{tab:datasets_overview} are constructed:
+Circ8 features an $8$-channel uniform circular array with a fixed radius of \SI{10}{\centi\meter} (\SI{20}{\centi\meter} diameter);
+Rand8 features $8$ microphones uniformly distributed within a \SI{20}{\centi\meter} $\times$ \SI{20}{\centi\meter} planar square area subject to a \SI{2}{\centi\meter} minimum inter-microphone distance;
+and Rand3-8 reuses the precomputed Rand8 acoustic scenarios without additional storage by dynamically subsampling $M \in \{3, \ldots, 8\}$ microphones with uniform probability $1/6$ per count (sampled freshly per chunk during training, and sampled deterministically once per recording during validation and testing while preserving canonical ascending channel order and recording $M$ in evaluation metadata).
 
 \subsection{BRUDEX}
 
@@ -1095,7 +1096,7 @@ The dummy head is equipped with both \gls{BTE} hearing aids,
 featuring a front and rear microphone on each ear,
 as well as in-ear microphones positioned within the ear canals.
 
-Similar to the synthetic dataset, the dynamic acoustic scenarios are constructed
+Similar to the synthetic dataset, the dynamic acoustic scenarios comprise $2400$ training, $300$ validation, and $300$ testing scenes generated
 using clean speech utterances from the LibriSpeech corpus~\cite{panayotov2015librispeech},
 utilizing the exact same stochastic conversational dynamic
 to simulate up to $4$ concurrently active speakers over a duration of \SI{120.0}{\second}.
@@ -1110,13 +1111,8 @@ with the in-ear microphone of the opposite ear ($3$ channels).
 This geometric diversity results in varying numbers of input channels
 and distinct spatial coordinates.
 
-The data is partitioned into distinct training, validation, and testing sets with non-overlapping spatial and acoustic parameters.
-For the spatial distribution of the active speakers, the directions of arrival are strictly partitioned.
-The training set utilizes directions of arrival of
-\SI{-30}{\degree}, \SI{60}{\degree}, \SI{-90}{\degree}, \SI{120}{\degree}, \SI{-150}{\degree}, and \SI{180}{\degree}.
-The validation set utilizes \SI{30}{\degree}, \SI{-120}{\degree}, and \SI{150}{\degree}.
-Finally, the testing set utilizes \SI{0}{\degree}, \SI{-60}{\degree}, and \SI{90}{\degree}.
-Furthermore, the environmental noise conditions are strictly separated:
+For the spatial distribution of active speakers across the $12$ measured \gls{DOA} azimuths of \gls{BRUDEX}, training and validation share the $8$ overlapping directions \SI{-150}{\degree}, \SI{-120}{\degree}, \SI{-90}{\degree}, \SI{-30}{\degree}, \SI{60}{\degree}, \SI{90}{\degree}, \SI{150}{\degree}, and \SI{180}{\degree} to provide sufficient spatial \gls{RIR} diversity during optimization, whereas the testing set is evaluated strictly on the $4$ completely unseen directions \SI{0}{\degree}, \SI{30}{\degree}, \SI{-60}{\degree}, and \SI{120}{\degree}.
+Furthermore, speech utterances (LibriSpeech \texttt{train-clean-360}, \texttt{dev-clean}, and \texttt{test-clean}) and environmental noise conditions are strictly disjoint across splits:
 The training set is corrupted by babble and white noise,
 the validation set by babble noise,
 and the testing set by cafeteria noise.
@@ -1142,35 +1138,26 @@ The Idiap room contains one $8$-channel uniform circular array on the table (Arr
 and one $4$-channel uniform circular array mounted on the ceiling (Array $2$).
 Finally, the TNO room is equipped with an $8$-channel uniform circular array on the table (Array $1$)
 and a $10$-channel linear array (Array $2$).
+Two array selection regimes are supported on \gls{AMI}: (i) a homogeneous $8$-channel circular subset comprising Array $1$ across all three rooms and Edinburgh Array $2$ (excluding Idiap $4$-channel Array $2$ and TNO $10$-channel linear Array $2$) for fixed-width $M=8$ baseline architectures, and (ii) the complete heterogeneous corpus spanning $M \in \{4, 8, 10\}$ circular and linear arrays for variable-$M$ evaluation.
 
-The data preparation follows the methodology proposed by Cornell et al.~\cite{cornell2022overlapped}.
-The ground truth \gls{SAD} labels are derived directly
-from the official manual word-level annotations (\texttt{ami\_public\_manual\_1.6.2}),
-which were reliably obtained by human annotators utilizing the individual close-talk headset microphones.
-The division of the recorded meetings into training, validation, and testing sets strictly adheres
-to the official \gls{AMI} Full-corpus-ASR partition, which includes meetings from all three rooms.
+The data preparation adapts the protocol of Cornell et al.~\cite{cornell2022overlapped}.
+Whereas Cornell et al.~\cite{cornell2022overlapped} trained on Kaldi \texttt{tri3} forced-alignment labels derived from close-talk headset microphones and tested against manual annotations, we derive ground-truth \gls{SAD} labels across all splits directly from the official segment-level manual annotations (\texttt{segments.xml} in \texttt{ami\_public\_manual\_1.6.2}, matching the speaker-count class distribution of~\cite{cornell2022overlapped}), mapped causally to \gls{STFT} frames as described in~\Cref{sec:problem_formulation}.
+The division of recorded meetings into training, validation, and testing sets strictly adheres
+to the official \gls{AMI} Full-corpus-ASR partition across all three rooms.
 
 During training, a dynamic data augmentation strategy is employed
-to expose the model to a well-distributed variety of overlap conditions.
-For \SI{50}{\percent} of the training data, unaltered contiguous chunks of \SI{7.0}{\second}
-are sampled from random temporal positions within the training meetings.
-For the remaining \SI{50}{\percent} of the training data,
-dynamically augmented chunks of \SI{7.0}{\second} are generated.
-These augmented chunks are constructed by sampling isolated single-speaker chunks
-from different meetings and mixing the isolated single-speaker chunks together.
-The augmented chunks contain $2$, $3$, or $4$ concurrent speakers,
-each with a probability of approximately \SI{33}{\percent}.
-To simulate acoustic variations, each additional single-speaker chunk
-is mixed with a relative \gls{SIR} shift.
-The relative \gls{SIR} shift is drawn from a Gaussian distribution
-($\mu = \SI{0}{\decibel}$, $\sigma = \SI{4.0}{\decibel}$) bounded between \SI{-10}{\decibel} and \SI{10}{\decibel}.
-To prevent numerical overflow, if the peak amplitude of the augmented chunk exceeds $0.99$,
-the augmented chunk is uniformly scaled to a target peak amplitude uniformly drawn
-from the interval $[0.5, 0.99]$. 
+to counteract class imbalance and expose the model to higher overlap multiplicities.
+Every training epoch first covers \SI{100}{\percent} of the unique training session duration using unaltered contiguous chunks (\SI{5.0}{\second} in non-causal baseline mode or \SI{7.0}{\second} in strictly causal mode) drawn at random temporal positions from recordings weighted by recording duration, and then appends an additional \SI{70}{\percent} augmentation budget of dynamically synthesized mixtures, expanding the total training epoch to \SI{170}{\percent} of the unique corpus duration.
+Candidate single-speaker segments contain strictly one active speaker with speech present over at least \SI{50}{\percent} of the chunk samples. For each augmented item, $2$, $3$, or $4$ concurrent speakers (each selected with equal probability $\approx \SI{33.3}{\percent}$) are mixed by drawing the source meeting proportional to recording length and combining single-speaker chunks from that same meeting and microphone array so room acoustics and array geometry remain physically consistent.
+To simulate level variations, each additional single-speaker chunk $i \ge 2$
+is scaled by a relative \gls{SIR} shift drawn from a Gaussian distribution
+($\mu = \SI{0}{\decibel}$, $\sigma = \SI{4.0}{\decibel}$) clamped to $[-10, 10]\,\si{\decibel}$, rather than the cross-dataset mixing with independent per-chunk Gaussian gain normalization ($\mathcal{N}(-16.7, 4^2)\,\si{\decibel}$) employed in~\cite{cornell2022overlapped}.
+To prevent numerical clipping, whenever the peak amplitude of an augmented mixture exceeds $0.99$,
+the chunk is rescaled to a target peak amplitude drawn uniformly from $[0.5, 0.99]$.
 
-For validation and testing, contiguous chunks are extracted sequentially across each recording using two supported sliding-window protocols:
+For validation and testing, contiguous chunks are extracted sequentially across each recording using two supported sliding-window protocols, retaining any trailing end-of-recording chunk containing at least one complete \gls{STFT} frame shift ($L_{\mathrm{hop}}$ samples) without zero-padding:
 (i) in the non-causal baseline configuration of Cornell et al.~\cite{cornell2022overlapped} ($\texttt{causal} = \texttt{False}$, trained on \SI{5.0}{\second} chunks), evaluation windows of \SI{3.0}{\second} are advanced with a hop length of \SI{1.5}{\second} (\SI{50}{\percent} overlap) and overlapping frame logits are averaged via~\Cref{eq:sliding_window_logit_avg};
-(ii) in the strictly causal configuration ($\texttt{causal} = \texttt{True}$, trained on \SI{7.0}{\second} chunks), evaluation windows of \SI{7.0}{\second} are advanced with a hop length of \SI{5.0}{\second} (\SI{2.0}{\second} overlap), where the initial \SI{2.0}{\second} of each subsequent chunk serve as a causal past-context burn-in buffer and are discarded prior to scoring (\Cref{sec:strictly_causal_adaptation}).
+(ii) in the strictly causal configuration ($\texttt{causal} = \texttt{True}$, trained on \SI{7.0}{\second} chunks), evaluation windows of \SI{7.0}{\second} are advanced with a hop length of \SI{5.0}{\second} (\SI{2.0}{\second} overlap), where the initial overlapping frames of each subsequent window matching already-emitted frames serve as a strictly causal past-context burn-in buffer and are discarded prior to scoring (\Cref{sec:strictly_causal_adaptation}).
 
 
 \section{System Design Space and Configuration Dimensions}
@@ -1180,10 +1167,10 @@ Having introduced the extracted acoustic representations (\Cref{sec:feature_extr
 
 \subsection{Dim.~0: Channel Scope and Operational Regime}
 \label{sec:dim_scope}
-The fundamental bifurcation in the design space separates \emph{single-channel} systems ($M = 1$) from \emph{multi-channel} systems ($M \ge 2$). Single-channel estimators operate solely on spectral cues ($\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{ref})}$ or $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$) extracted from a randomly sampled reference microphone $m_{\mathrm{ref}}$, meaning variable microphone counts and spatial array geometry do not arise. Multi-channel estimators instead exploit inter-microphone spatial information across $M \ge 2$ channels and operate under one of two regimes:
+The fundamental bifurcation in the design space separates \emph{single-channel} systems ($M = 1$) from \emph{multi-channel} systems ($M \ge 2$). Single-channel estimators operate solely on spectral cues ($\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{ref})}$ or $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$) and utilize all available microphones in a corpus: during training, one microphone is sampled uniformly at random per chunk over the standard session-duration epoch; during validation, one fixed-seed random microphone is selected per recording; and during testing, performance is evaluated exhaustively across every individual microphone channel as a standalone single-channel trial. Multi-channel estimators instead exploit inter-microphone spatial information across $M \ge 2$ channels and operate under one of two regimes:
 \begin{itemize}
-  \item \textbf{Fixed-array regime:} Both the microphone count $M$ and the microphone indexing order (including a fixed reference microphone $m_{\mathrm{ref}} = 1$) remain constant and matched between training and testing, permitting architectures with fixed input dimensions tied to a specific array layout.
-  \item \textbf{Variable-$M$ and permutation-invariant regime:} The architecture supports arbitrary microphone counts $M$, microphone channels are randomly permuted during both training and testing, and whenever a single-channel spectral feature is paired with spatial features, its reference microphone $m_{\mathrm{ref}}$ is selected randomly per example.
+  \item \textbf{Fixed-array baseline regime:} Both the microphone count $M$ and the fixed canonical microphone indexing order (including $m_{\mathrm{ref}} = 1$, without channel-permutation augmentation) remain constant and matched between training and testing, permitting architectures with fixed input dimensions tied to a specific array layout as in~\cite{cornell2022overlapped}.
+  \item \textbf{Variable-$M$ and permutation-invariant regime:} The architecture supports arbitrary microphone counts $M$ in a permutation-equivariant manner, with random channel-order permutation augmentation and geometry-conditioned architectures explored as the generalization extension beyond fixed-array baselines.
 \end{itemize}
 
 \subsection{Dim.~1: Input Feature Modalities and Array Geometry}
@@ -1203,7 +1190,7 @@ The architectural dimension comprises three coupled sub-dimensions that exhibit 
 
 \subsection{Dim.~3: Training Dataset and Fixed Constants}
 \label{sec:dim_training_constants}
-The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}) determines the geometric diversity, microphone-count variability, and acoustic domain exposed during optimization, and is intentionally decoupled from the held-out testing corpora. To isolate the impact of the four active dimensions above, the remaining system-level parameters are standardized across the core investigation: the causality regime is explicitly controlled via $\texttt{causal} \in \{\texttt{False}, \texttt{True}\}$ (comparing Cornell's non-causal baseline with $T_{\mathrm{sub}} = 10$, linear upsampling~\Cref{eq:linear_upsampling}, and \SI{50}{\percent}-overlap sliding-window logit averaging against the strictly frame-causal configuration of~\Cref{eq:strict_causality_definition} with causal zero-order hold upsampling~\Cref{eq:causal_upsampling} and causal burn-in chunking), predictions are always restored to the native \gls{STFT} frame resolution $T$, and all models are optimized using standard frame-wise cross-entropy loss (while alternative ordinal or temporally smoothed loss formulations are deferred to a separate study).
+The training dataset (Circ8, Rand8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}) determines the geometric diversity, microphone-count variability, and acoustic domain exposed during optimization, and is intentionally decoupled from the held-out testing corpora. To isolate the impact of the four active dimensions above, the remaining system-level parameters are standardized across the core investigation: the causality regime is explicitly controlled via $\texttt{causal} \in \{\texttt{False}, \texttt{True}\}$ (comparing Cornell's non-causal baseline with $T_{\mathrm{sub}} = 10$, linear upsampling~\Cref{eq:linear_upsampling}, and \SI{50}{\percent}-overlap sliding-window logit averaging against the strictly frame-causal configuration of~\Cref{eq:strict_causality_definition} with causal zero-order hold upsampling~\Cref{eq:causal_upsampling} and causal burn-in chunking), predictions are always restored to the native \gls{STFT} frame resolution $T$, and all models are optimized using standard frame-wise cross-entropy loss (while alternative ordinal or temporally smoothed loss formulations are deferred to a separate study).
 
 \begin{table*}[t]
   \centering
@@ -1215,7 +1202,7 @@ The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}
     \textbf{Category} & \textbf{Dimension / Sub-Dimension} & \textbf{Investigated Choices and Scope} \\
     \midrule
     \textbf{Dim.~0} & Channel scope \& regime &
-    \textbf{Single-channel} ($M = 1$, random $m_{\mathrm{ref}}$); \textbf{Multi-channel fixed-array} (fixed $M$, fixed channel order, $m_{\mathrm{ref}} = 1$); \textbf{Multi-channel variable-$M$} (arbitrary $M$, random channel permutation in train/test, random $m_{\mathrm{ref}}$). \\
+    \textbf{Single-channel} ($M = 1$, random mic in train/val, all mics evaluated at test); \textbf{Multi-channel fixed-array} (fixed $M$ and channel order, $m_{\mathrm{ref}} = 1$); \textbf{Multi-channel variable-$M$} (arbitrary $M$, permutation-equivariant extension). \\
     \midrule
     \textbf{Dim.~1} & Spectral features &
     None; single-channel $\mathbf{Z}_{\mathrm{STFT}}^{(\mathrm{ref})}$, $\mathbf{Z}_{\mathrm{mel}}^{(\mathrm{ref})}$ ($C = 1$); multi-channel $\mathbf{Z}_{\mathrm{STFT}}$, $\mathbf{Z}_{\mathrm{mel}}$ ($C = M$). \\
@@ -1232,7 +1219,7 @@ The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}
     Early concatenation; late \acrshort{FiLM} conditioning; inter-channel \acrshort{TAC} or attention conditioning. \\
     \midrule
     \textbf{Dim.~3} & Training dataset &
-    Synthetic (Circ8, Rand8, Circ3-8, Rand3-8); measured \glspl{RIR} (\acrshort{BRUDEX}); real meetings (\acrshort{AMI}). \\
+    Synthetic (Circ8, Rand8, Rand3-8); measured \glspl{RIR} (\acrshort{BRUDEX}); real meetings (\acrshort{AMI}). \\
     \midrule
     \textbf{Fixed} & Causality \& output rate &
     Configurable via $\texttt{causal} \in \{\texttt{False}, \texttt{True}\}$: non-causal baseline ($\pm T_{\mathrm{c}}$ cat-pool, unmasked \acrshort{MHA}, linear upsampling, \SI{50}{\percent}-overlap logit averaging) vs.\ strictly \acrshort{STFT} frame-causal ($\tau \le t$, masked \acrshort{MHA}, zero-order-hold upsampling, causal burn-in chunking); output restored to native \acrshort{STFT} resolution $T$ ($T_{\mathrm{sub}} \in \{1, 10\}$). \\
@@ -1240,7 +1227,7 @@ The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}
     Frame-wise categorical cross-entropy loss (ordinal and smoothed variants deferred). \\
     \midrule
     \textbf{Eval.} & Testing datasets (external) &
-    In-domain matched, unseen geometry, unseen $M$, and synthetic-to-real transfer across Circ8, Rand8, Circ3-8, Rand3-8, \acrshort{BRUDEX}, and \acrshort{AMI} (not a system-defining dimension). \\
+    In-domain matched, unseen geometry, unseen $M$, and synthetic-to-real transfer across Circ8, Rand8, Rand3-8, \acrshort{BRUDEX}, and \acrshort{AMI} (not a system-defining dimension). \\
     \bottomrule
   \end{tabular*}
 \end{table*}
@@ -1250,10 +1237,10 @@ The training dataset (Circ8, Rand8, Circ3-8, Rand3-8, \gls{BRUDEX}, or \gls{AMI}
 % Detail how the models are trained and what they are tested on.
 
 \subsection{Implementation Details}
-All audio recordings across all datasets are processed at a uniform sampling frequency of $f_s = \SI{16}{\kilo\hertz}$ using the strictly causal left-padded \gls{STFT} framework of~\Cref{sec:signal_model_stft} with a \SI{25}{\milli\second} Hann window ($L_{\mathrm{win}} = 400$ samples, left zero-padded by $L_{\mathrm{win}} - L_{\mathrm{hop}} = 240$ samples with \texttt{center=False}) and a \SI{10}{\milli\second} frame shift ($L_{\mathrm{hop}} = 160$ samples), neglecting the DC and Nyquist frequency bins ($F = 199$). While Cornell et al.~\cite{cornell2022overlapped} employed a \SI{50}{\milli\second} analysis window specifically for \gls{IPD} and \gls{CSIPD} extraction, we apply this unified \SI{25}{\milli\second} \gls{STFT} configuration identically across all spectral and spatial feature extractors (including \gls{CSIPD} and Log-Mel filterbanks with $D_{\mathrm{mel}} = 80$ bands) to ensure identical temporal alignment and a fair cross-feature comparison. Furthermore, all multi-component feature extractors (\gls{STFT}, \gls{CSIPD}, \gls{PSC}, and \gls{wGMSC}) follow a unified block-concatenated component layout along the feature axis (note that stacking $\cos\{\bm{\theta}_{p,t}\}$ and $\sin\{\bm{\theta}_{p,t}\}$ block-wise rather than interleaving per bin is mathematically identical under the first linear/pointwise projection layer).
+All audio recordings across all datasets are processed at a uniform sampling frequency of $f_s = \SI{16}{\kilo\hertz}$ using the strictly causal left-padded \gls{STFT} framework of~\Cref{sec:signal_model_stft} with a \SI{25}{\milli\second} Hann window ($L_{\mathrm{win}} = 400$ samples, left zero-padded by $L_{\mathrm{win}} - L_{\mathrm{hop}} = 240$ samples with \texttt{center=False}) and a \SI{10}{\milli\second} frame shift ($L_{\mathrm{hop}} = 160$ samples), neglecting the DC and Nyquist frequency bins ($F = 199$). While Cornell et al.~\cite{cornell2022overlapped} extracted \gls{IPD} and \gls{CSIPD} using a \SI{50}{\milli\second} ($800$-sample) window zero-padded to a $1600$-point \acrshort{FFT} while retaining the DC and Nyquist bins (yielding $801$ \gls{IPD} and $1602$ \gls{CSIPD} dimensions per pair), we apply this unified \SI{25}{\milli\second} ($400$-point) \gls{STFT} configuration without zero-padding identically across all spectral and spatial feature extractors (yielding $F = 199$ and $398$ \gls{CSIPD} dimensions per pair, alongside $D_{\mathrm{mel}} = 80$ Log-Mel bands) to guarantee identical temporal alignment and a fair cross-feature comparison. Furthermore, all multi-component feature extractors (\gls{STFT}, \gls{CSIPD}, \gls{PSC}, and \gls{wGMSC}) follow a unified block-concatenated component layout along the feature axis (note that stacking $\cos\{\bm{\theta}_{p,t}\}$ and $\sin\{\bm{\theta}_{p,t}\}$ block-wise rather than interleaving per bin is mathematically identical under the first linear/pointwise projection layer). Unlike Cornell et al.~\cite{cornell2022overlapped}, SpecAugment~\cite{park2019specaugment} time and frequency masking is omitted during training so that brief transient coherence peaks in \gls{wGMSC} are not masked out.
 
 \subsection{Acoustic Ground Truth and Synthetic Dataset Generation}
-% Describe the PyRoomAcoustics simulation (Phase 1 & 2) using LibriSpeech and DEMAND. Explain how the -30dB power-based VAD with 200ms bridging is applied to isolated sources before mixing to create the acoustic labels.
+% Describe the PyRoomAcoustics simulation (Phase 1 & 2) using LibriSpeech and DEMAND. Explain how the -30dB power-based VAD with 1.0 s bridging is applied to isolated sources before mixing to create the acoustic labels.
 
 \subsection{Real-World Evaluation Datasets}
 % Introduce the datasets used for zero-shot testing:
@@ -1261,30 +1248,18 @@ All audio recordings across all datasets are processed at a uniform sampling fre
 % 2. CHiME-6 (multi-room dinner party).
 % 3. AMI (meeting room).
 
-\subsection{Evaluation Metrics}
-% Frame-wise accuracy, Mean Absolute Error (MAE), Mean Squared Error (MSE), Confusion Matrices, F1-scores, and the delay distribution of detected activations/deactivations.
-For multi-array datasets, such as the \gls{AMI} meeting corpus, evaluation is performed
-by averaging the output posterior probabilities generated independently for each array within a room,
-prior to determining the final discrete speaker count.
-This probability-level fusion leverages the spatial diversity of the distributed arrays
-to improve the overall robustness and accuracy of the system, mitigating localized acoustic degradations.
-This approach follows the evaluation protocol established by Cornell et al.~\cite{cornell2022overlapped}.
+\subsection{Evaluation Protocol and Metrics}
+Each physical microphone array recording (including both Array $1$ and Array $2$ on \gls{AMI}) is evaluated independently as a standalone single-array trial (or per individual microphone channel for single-channel models, and both overall and stratified by channel count $M$ on variable-$M$ corpora). Unlike the multi-array evaluation protocol of Cornell et al.~\cite{cornell2022overlapped}, which averages softmax posterior probabilities across distributed arrays in the same room before decision, independent per-array scoring isolates single-array performance without conflating spatial feature gains with multi-array ensembling.
 
-\begin{itemize}
-  \item Frame-wise accuracy
-  \item \gls{MAE}
-  \item \gls{MSE}
-  \item Confusion Matrices
-  \item Precision, Recall and \gls{F1}
-  \item Delay distribution of detected activations/deactivations
-\end{itemize}
-
-
-
-
+System performance is quantified on the continuous stitched frame sequences from~\Cref{sec:output_stage,sec:strictly_causal_adaptation} using three complementary categories of metrics:
+\begin{enumerate}
+  \item \textbf{Threshold-Free Average Precision (\gls{AP}):} Following Cornell et al.~\cite{cornell2022overlapped}, per-class one-vs-rest \gls{AP} is computed over all pooled evaluation frames directly from the predicted posterior probabilities $\widehat{p}_{k,t}$ for each speaker-count class $k \in \{0, 1, \dots, K_{\mathrm{max}}\}$ as $\mathrm{AP}_k = \sum_m (R_m - R_{m-1}) P_m$, together with the macro-average $\mathrm{mAP}$ across present counting classes, as well as derived binary \gls{VAD} ($\mathrm{AP}_{\mathrm{VAD}}$ from $\sum_{k \ge 1} \widehat{p}_{k,t}$) and \gls{OSD} ($\mathrm{AP}_{\mathrm{OSD}}$ from $\sum_{k \ge 2} \widehat{p}_{k,t}$) scores.
+  \item \textbf{Frame-Wise Hard-Decision Counting Metrics:} Evaluating $\widehat{K}_t = \argmax_k \widehat{p}_{k,t}$ yields frame-wise classification accuracy, \gls{MAE}, \gls{MSE}, and the multi-class confusion matrix.
+  \item \textbf{Full-Recording Event-Based Metrics and Detection Delay:} To assess transition tracking across continuous recordings without artificial chunk-boundary artifacts, speaker activations and deactivations are extracted per full stitched recording via first-order temporal differences $\Delta K_t = K_t - K_{t-1}$ (for $t \ge 2$). Each multi-step transition of magnitude $|\Delta K_t| > 1$ is decomposed into $|\Delta K_t|$ elementary unit steps while retaining both the unit transition label (e.g., $0 \to 1$, $1 \to 2$) and raw jump label ($a \to b$). Predicted and ground-truth events are paired via optimal minimum-distance bipartite matching within a configurable tolerance window bounded by $\Delta\tau_{\mathrm{tol}} = \SI{1.0}{\second}$: in non-causal evaluation ($\texttt{causal} = \texttt{False}$), matching uses the symmetric bidirectional window $\Delta t_e = (\hat{t}_e - t_e)\tau_{\mathrm{fs}} \in [-\Delta\tau_{\mathrm{tol}}, +\Delta\tau_{\mathrm{tol}}]$, whereas in strictly causal evaluation ($\texttt{causal} = \texttt{True}$), because an online estimator cannot physically respond prior to acoustic onset, matching uses the asymmetric one-sided window $\Delta t_e \in [-\Delta\tau_{\mathrm{past}}, +\Delta\tau_{\mathrm{tol}}]$ with default $\Delta\tau_{\mathrm{past}} = \SI{0.0}{\second}$ so premature detections ($\hat{t}_e < t_e$) cannot match future ground-truth events and are scored as false positives. This yields activation, deactivation, and overall precision, recall, and \gls{F1}, alongside the signed detection delay $\Delta t_e$ for every matched true-positive event reported in aggregate (mean, median, interquartile range, and mean absolute delay) as well as stratified per speaker-count transition ($a \to b$).
+\end{enumerate}
 
 \subsection{Training Details}
-% Hyperparameters, PyTorch Lightning setup, loss functions, etc.
+All neural models are trained by minimizing frame-wise categorical cross-entropy loss using RAdam~\cite{liu2020radam} with decoupled weight decay ($\mathrm{lr} = 10^{-4}$, weight decay $10^{-4}$ applied exclusively to weight tensors with $\ge 2$ dimensions while excluding biases and \gls{LN} affine parameters). Training uses a batch size of $16$ and gradient norm clipping at $5.0$, with each virtual epoch spanning \SI{100}{\percent} of the unique training corpus duration via length-weighted random recording sampling. During validation, the learning rate is halved via \texttt{ReduceLROnPlateau} (patience $5$ epochs) and training terminates via early stopping (patience $15$ epochs), both monitored on the continuous stitched validation cross-entropy loss so model selection matches inference operation.
 
 
 \section{Results and Discussion}

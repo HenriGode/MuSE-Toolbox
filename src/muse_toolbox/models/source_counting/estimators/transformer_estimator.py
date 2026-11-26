@@ -75,11 +75,16 @@ class MHALayer(nn.Module):
         self.norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, key_padding_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Applies multi-head self-attention (causal or bidirectional) with residual connection.
 
         Args:
             x (torch.Tensor): Input sequence tensor of shape ``(B, embed_dim, T)``.
+            key_padding_mask (torch.Tensor | None, optional): Boolean mask of shape
+                ``(B, T)`` where ``True`` marks right-padded tokens to ignore.
+                Defaults to ``None``.
 
         Returns:
             torch.Tensor: Contextualized tensor of shape ``(B, embed_dim, T)``.
@@ -99,8 +104,9 @@ class MHALayer(nn.Module):
                 normed,
                 normed,
                 normed,
+                key_padding_mask=key_padding_mask,
                 need_weights=False,
-                is_causal=True,
+                is_causal=key_padding_mask is None,
                 attn_mask=attn_mask,
             )
         else:
@@ -108,6 +114,7 @@ class MHALayer(nn.Module):
                 normed,
                 normed,
                 normed,
+                key_padding_mask=key_padding_mask,
                 need_weights=False,
                 is_causal=False,
                 attn_mask=None,
@@ -247,8 +254,8 @@ class FiLMLayer(nn.Module):
           + \\bm{\\beta}(\\bar{\\mathbf{u}})
 
     Initializes projection weights small (``std = 0.01 / sqrt(cond_dim)``) and biases
-    uniformly in ``[-0.1, 0.1]`` so initial scales are distinct across channels within
-    ``~[0.9, 1.1]`` while ``AdamW`` weight decay regularizes cleanly toward identity.
+    to ``0.0`` so initial scales are tightly centered around ``1.0`` and shifts around
+    ``0.0`` while decoupled weight decay regularizes cleanly toward identity.
     """
 
     def __init__(self, cond_dim: int, embed_dim: int) -> None:
@@ -269,8 +276,8 @@ class FiLMLayer(nn.Module):
         weight_std = 0.01 / math.sqrt(max(1, self.cond_dim))
         nn.init.normal_(self.gamma_proj.weight, mean=0.0, std=weight_std)
         nn.init.normal_(self.beta_proj.weight, mean=0.0, std=weight_std)
-        nn.init.uniform_(self.gamma_proj.bias, -0.1, 0.1)
-        nn.init.uniform_(self.beta_proj.bias, -0.1, 0.1)
+        nn.init.zeros_(self.gamma_proj.bias)
+        nn.init.zeros_(self.beta_proj.bias)
 
     def forward(self, h: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
         """Applies feature-wise scale and shift modulation to hidden states.
@@ -288,8 +295,53 @@ class FiLMLayer(nn.Module):
         return scale * h + shift
 
 
+def _prepare_valid_masks(
+    t_orig: int,
+    t_sub: int,
+    subsample: int,
+    valid_frames: torch.Tensor | None,
+    device: torch.device,
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Builds frame zeroing masks and subsampled ``key_padding_mask`` for variable-length batches.
+
+    Args:
+        t_orig (int): Padded temporal STFT frame count ``T_orig``.
+        t_sub (int): Subsampled token sequence length ``T'``.
+        subsample (int): Temporal subsampling stride ``S`` / ``T_sub``.
+        valid_frames (torch.Tensor | None): Per-item valid frame counts ``(B,)``.
+        device (torch.device): Target tensor device.
+
+    Returns:
+        tuple[torch.Tensor | None, torch.Tensor | None]: Tuple of
+            ``(frame_valid_mask, key_padding_mask)`` where ``frame_valid_mask`` has shape
+            ``(B, 1, T_orig)`` (``True`` on valid frames) and ``key_padding_mask`` has
+            shape ``(B, T')`` (``True`` on padded tokens), or ``(None, None)`` when all
+            batch items have full length ``t_orig``.
+    """
+    if valid_frames is None or not bool((valid_frames < t_orig).any()):
+        return None, None
+
+    vf = valid_frames.to(device=device, dtype=torch.long).clamp(min=1, max=t_orig)
+    frame_valid_mask = (
+        torch.arange(t_orig, device=device).unsqueeze(0) < vf.unsqueeze(1)
+    ).unsqueeze(1)
+
+    valid_sub = (torch.div(vf - 1, subsample, rounding_mode="floor") + 1).clamp(
+        min=1, max=t_sub
+    )
+    key_padding_mask = (
+        torch.arange(t_sub, device=device).unsqueeze(0) >= valid_sub.unsqueeze(1)
+    )
+    key_padding_mask[:, 0] = False
+    return frame_valid_mask, key_padding_mask
+
+
 def upsample_logits(
-    logits: torch.Tensor, target_len: int, subsample: int, causal: bool
+    logits: torch.Tensor,
+    target_len: int,
+    subsample: int,
+    causal: bool,
+    valid_frames: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Restores subsampled frame logits back to native STFT frame resolution.
 
@@ -299,6 +351,9 @@ def upsample_logits(
         subsample (int): Temporal subsampling stride ``S`` / ``T_sub``.
         causal (bool): If ``True``, applies strictly causal zero-order hold; if ``False``,
             applies non-causal piecewise linear interpolation between anchor frames.
+        valid_frames (torch.Tensor | None, optional): Optional valid frame counts ``(B,)``
+            so non-causal linear interpolation does not pull boundary logits toward
+            right-padded tail tokens in variable-length batches. Defaults to ``None``.
 
     Returns:
         torch.Tensor: Full-resolution logit tensor of shape ``(B, num_classes, T_orig)``.
@@ -311,11 +366,30 @@ def upsample_logits(
 
     t_sub = logits.size(-1)
     t_idx = torch.arange(target_len, device=logits.device, dtype=torch.long)
-    idx0 = (t_idx // subsample).clamp(max=t_sub - 1)
-    idx1 = (idx0 + 1).clamp(max=t_sub - 1)
     alpha = (
         (t_idx % subsample).to(logits.dtype) / float(subsample)
     ).view(1, 1, target_len)
+
+    if valid_frames is not None and bool((valid_frames < target_len).any()):
+        vf = valid_frames.to(device=logits.device, dtype=torch.long).clamp(
+            min=1, max=target_len
+        )
+        valid_sub = (torch.div(vf - 1, subsample, rounding_mode="floor") + 1).clamp(
+            min=1, max=t_sub
+        )
+        max_sub_idx = (valid_sub - 1).unsqueeze(1)  # (B, 1)
+        base_idx0 = (t_idx // subsample).unsqueeze(0)  # (1, T)
+        idx0 = torch.minimum(base_idx0, max_sub_idx)
+        idx1 = torch.minimum(idx0 + 1, max_sub_idx)
+        num_classes = logits.size(1)
+        gather_idx0 = idx0.unsqueeze(1).expand(-1, num_classes, -1)
+        gather_idx1 = idx1.unsqueeze(1).expand(-1, num_classes, -1)
+        val0 = torch.gather(logits, dim=-1, index=gather_idx0)
+        val1 = torch.gather(logits, dim=-1, index=gather_idx1)
+        return (1.0 - alpha) * val0 + alpha * val1
+
+    idx0 = (t_idx // subsample).clamp(max=t_sub - 1)
+    idx1 = (idx0 + 1).clamp(max=t_sub - 1)
     return (1.0 - alpha) * logits[..., idx0] + alpha * logits[..., idx1]
 
 
@@ -393,6 +467,7 @@ class TransformerEstimator(BaseSourceCountEstimator):
             nn.Conv1d(self.cat_pool_norm.out_dim, embed_dim, 1)
         )
         self.pos_encs = PositionalEncoding(embed_dim, dropout, max_len=max_seq_len)
+        self.out_norm = nn.LayerNorm(embed_dim)
         self.output = nn.Conv1d(embed_dim, max_sources + 1, 1)
 
         self.layers = nn.ModuleList(
@@ -453,17 +528,60 @@ class TransformerEstimator(BaseSourceCountEstimator):
         log.info(f"{indent}  Num Heads: {self.n_heads}")
         log.info(f"{indent}  Num Layers: {self.n_layers}")
 
-    def forward_tensor(self, features: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        features: torch.Tensor,
+        cond_features: torch.Tensor | None = None,
+        valid_frames: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Processes input features with optional padding mask and returns logits.
+
+        Args:
+            features (torch.Tensor): Input features ``(B, C, F, T)`` or ``(B, C*F, T)``.
+            cond_features (torch.Tensor | None, optional): Unused for single-stream.
+            valid_frames (torch.Tensor | None, optional): Valid frame counts ``(B,)``.
+
+        Returns:
+            torch.Tensor: Class logits of shape ``(B, T, max_sources + 1)``.
+        """
+        if cond_features is not None:
+            raise ValueError(
+                f"{self.__class__.__name__} is a single-stream estimator and does not "
+                "accept `cond_features`. Use FusionTransformerEstimator for dual-stream fusion."
+            )
+        flat_features = self._flatten_channel_features(
+            features, self.num_input_channels, stream_name="features"
+        )
+        return self.forward_tensor(flat_features, valid_frames=valid_frames)
+
+    def forward_tensor(
+        self,
+        features: torch.Tensor,
+        valid_frames: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Processes flattened single-stream STFT features through the Transformer.
 
         Args:
             features (torch.Tensor): Flattened feature tensor of shape
                 ``(B, C * F, T)``.
+            valid_frames (torch.Tensor | None, optional): Valid frame counts ``(B,)``
+                for right-padded variable-length batches. Defaults to ``None``.
 
         Returns:
             torch.Tensor: Class logits of shape ``(B, T, max_sources + 1)``.
         """
         t_orig = features.size(-1)
+        t_sub = (t_orig - 1) // self.subsample + 1 if self.subsample > 1 else t_orig
+        frame_valid_mask, key_padding_mask = _prepare_valid_masks(
+            t_orig=t_orig,
+            t_sub=t_sub,
+            subsample=self.subsample,
+            valid_frames=valid_frames,
+            device=features.device,
+        )
+        if frame_valid_mask is not None:
+            features = features.masked_fill(~frame_valid_mask, 0.0)
+
         x = self.cat_pool_norm(features)
         x = self.bottleneck(x)
         x = self.pos_encs(x)
@@ -471,12 +589,17 @@ class TransformerEstimator(BaseSourceCountEstimator):
         for layer_block in self.layers:
             mha = layer_block[0]
             ff = layer_block[1]
-            x = mha(x)
+            x = mha(x, key_padding_mask=key_padding_mask)
             x = ff(x)
 
+        x = self.out_norm(x.transpose(1, 2)).transpose(1, 2)
         logits = self.output(x)
         logits = upsample_logits(
-            logits, target_len=t_orig, subsample=self.subsample, causal=self.causal
+            logits,
+            target_len=t_orig,
+            subsample=self.subsample,
+            causal=self.causal,
+            valid_frames=valid_frames,
         )
         return logits.permute(0, 2, 1)
 
@@ -609,6 +732,7 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
             )
 
         self.pos_encs = PositionalEncoding(embed_dim, dropout, max_len=max_seq_len)
+        self.out_norm = nn.LayerNorm(embed_dim)
         self.output = nn.Conv1d(embed_dim, max_sources + 1, 1)
         self.layers = nn.ModuleList(
             [
@@ -680,6 +804,7 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
         self,
         features: torch.Tensor,
         cond_features: torch.Tensor | None = None,
+        valid_frames: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Flattens primary and conditioning streams and executes Early or Late FiLM fusion.
 
@@ -688,6 +813,8 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
                 ``(B, C_spec, F_spec, T)`` or ``(B, C_spec * F_spec, T)``.
             cond_features (torch.Tensor | None): Spatial conditioning stream tensor of
                 shape ``(B, C_spat, F_spat, T)`` or ``(B, C_spat * F_spat, T)``.
+            valid_frames (torch.Tensor | None, optional): Valid frame counts ``(B,)``
+                for right-padded variable-length batches. Defaults to ``None``.
 
         Returns:
             torch.Tensor: Source activity logits of shape ``(B, T, max_sources + 1)``.
@@ -705,7 +832,7 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
         x_cond = self._flatten_channel_features(
             cond_features, self.cond_num_channels, stream_name="cond_features"
         )
-        return self.forward_dual(x_spec, x_cond)
+        return self.forward_dual(x_spec, x_cond, valid_frames=valid_frames)
 
     def forward_tensor(self, features: torch.Tensor) -> torch.Tensor:
         """Not supported for dual-stream fusion; use ``forward(features, cond_features)``."""
@@ -715,18 +842,34 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
         )
 
     def forward_dual(
-        self, x_spec: torch.Tensor, x_cond: torch.Tensor
+        self,
+        x_spec: torch.Tensor,
+        x_cond: torch.Tensor,
+        valid_frames: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Processes flattened spectral and spatial streams through Early or Late FiLM fusion.
 
         Args:
             x_spec (torch.Tensor): Flattened primary stream ``(B, C_spec * F_spec, T)``.
             x_cond (torch.Tensor): Flattened conditioning stream ``(B, C_spat * F_spat, T)``.
+            valid_frames (torch.Tensor | None, optional): Valid frame counts ``(B,)``.
 
         Returns:
             torch.Tensor: Source activity logits of shape ``(B, T, max_sources + 1)``.
         """
         t_orig = x_spec.size(-1)
+        t_sub = (t_orig - 1) // self.subsample + 1 if self.subsample > 1 else t_orig
+        frame_valid_mask, key_padding_mask = _prepare_valid_masks(
+            t_orig=t_orig,
+            t_sub=t_sub,
+            subsample=self.subsample,
+            valid_frames=valid_frames,
+            device=x_spec.device,
+        )
+        if frame_valid_mask is not None:
+            x_spec = x_spec.masked_fill(~frame_valid_mask, 0.0)
+            x_cond = x_cond.masked_fill(~frame_valid_mask, 0.0)
+
         u_spec = self.spec_stem(x_spec)
         u_cond = self.cond_stem(x_cond)
 
@@ -736,7 +879,7 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
             for layer_block in self.layers:
                 mha = layer_block[0]
                 ff = layer_block[1]
-                h = ff(mha(h))
+                h = ff(mha(h, key_padding_mask=key_padding_mask))
         else:
             assert self.film_layers is not None
             h = self.bottleneck(u_spec)
@@ -745,10 +888,15 @@ class FusionTransformerEstimator(BaseSourceCountEstimator):
                 mha = layer_block[0]
                 ff = layer_block[1]
                 h = film(h, u_cond)
-                h = ff(mha(h))
+                h = ff(mha(h, key_padding_mask=key_padding_mask))
 
+        h = self.out_norm(h.transpose(1, 2)).transpose(1, 2)
         logits = self.output(h)
         logits = upsample_logits(
-            logits, target_len=t_orig, subsample=self.subsample, causal=self.causal
+            logits,
+            target_len=t_orig,
+            subsample=self.subsample,
+            causal=self.causal,
+            valid_frames=valid_frames,
         )
         return logits.permute(0, 2, 1)

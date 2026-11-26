@@ -1,11 +1,19 @@
 """Metrics for MuSE-Toolbox."""
 
-from .source_counting import Accuracy, ConfusionMatrix, TolerantEventF1, MSE, MAE
-from .rtf_estimation import SDR, STOI, SISDR, PESQ, SINR, HermitianAngle, FWSSNR, SAVE_AUDIO
-from .meta2df import META2DF
+from muse_toolbox.metrics.source_counting import (
+    Accuracy,
+    AveragePrecision,
+    ConfusionMatrix,
+    MAE,
+    MSE,
+    TolerantEventF1,
+)
+from muse_toolbox.metrics.rtf_estimation import SDR, STOI, SISDR, PESQ, SINR, HermitianAngle, FWSSNR, SAVE_AUDIO
+from muse_toolbox.metrics.meta2df import META2DF
 
 __all__ = [
     "Accuracy",
+    "AveragePrecision",
     "ConfusionMatrix",
     "TolerantEventF1",
     "MSE",

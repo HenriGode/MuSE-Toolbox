@@ -453,10 +453,14 @@ class PraAnfDataModule(BaseDataModule):
         acc_device: torch.device,
         chunk_length_s: float,
         min_context_s: float,
-        train_items_per_epoch: int,
+        train_items_per_epoch: int | None,
         augmentation: dict,
         eval_chunk_length_s: float | None = None,
         eval_min_context_s: float | None = None,
+        precomputed_id: str | None = None,
+        mic_count_probs: dict[int, float] | None = None,
+        single_channel_expansion: bool | None = None,
+        **kwargs: Any,
     ):
         """
         Initializes the PRA/ANF DataModule.
@@ -478,10 +482,13 @@ class PraAnfDataModule(BaseDataModule):
             acc_device (torch.device): Device used for accelerated generation.
             chunk_length_s (float): Length of the chunks to load in seconds.
             min_context_s (float): Overlap context in seconds.
-            train_items_per_epoch (int): Number of training items per epoch.
+            train_items_per_epoch (int | None): Number of training items per epoch.
             augmentation (dict): Augmentation configuration dictionary.
             eval_chunk_length_s (float | None): Optional evaluation sliding-window duration in seconds.
             eval_min_context_s (float | None): Optional evaluation sliding-window overlap in seconds.
+            precomputed_id (str | None): Shared parent precomputed dataset ID.
+            mic_count_probs (dict[int, float] | None): Microphone-count subsampling probabilities.
+            single_channel_expansion (bool | None): Single-channel stream mode override.
         """
         super().__init__(
             data_dir=data_dir,
@@ -501,6 +508,10 @@ class PraAnfDataModule(BaseDataModule):
             eval_min_context_s=eval_min_context_s,
             train_items_per_epoch=train_items_per_epoch,
             augmentation=augmentation,
+            precomputed_id=precomputed_id,
+            mic_count_probs=mic_count_probs,
+            single_channel_expansion=single_channel_expansion,
+            **kwargs,
         )
         self.pra_anf_config = pra_anf_config
         self.clean_speech_databases_configs = clean_speech_databases

@@ -7,6 +7,7 @@ from hydra.utils import instantiate
 
 from muse_toolbox.models.components.feature_extractors import (
     CSIPD_Feature_Extractor,
+    GMSC_Feature_Extractor,
     PSC_Feature_Extractor,
     PureSTFTFeatureExtractor,
     StackedFeatureExtractor,
@@ -279,3 +280,32 @@ def test_hydra_configs_and_stacked_integration() -> None:
         ],
     )
     assert stacked.feature_dim == 6 * transform.num_freq_bins
+
+
+def test_unsquared_gmsc_and_extractor_coherence_normalization() -> None:
+    """Verifies unsquared gmsc() (#3) and GMSC_Feature_Extractor coherence normalization (#2)."""
+    # 1. Exact unsquared eigenvalue formula: M=3 with eigvals=[0.5, 0.5, 2.0] -> (2 - 1)/(3 - 1) = 0.5
+    coh_mat = torch.tensor(
+        [
+            [1.0 + 0.0j, 0.5 + 0.0j, 0.5 + 0.0j],
+            [0.5 + 0.0j, 1.0 + 0.0j, 0.5 + 0.0j],
+            [0.5 + 0.0j, 0.5 + 0.0j, 1.0 + 0.0j],
+        ],
+        dtype=torch.complex64,
+    )
+    val = gmsc(coh_mat)
+    assert val.shape == (1, 1)
+    assert torch.allclose(val, torch.tensor([[0.5]]), atol=1e-6)
+
+    # 1-mic edge case returns 0.0 without ZeroDivisionError
+    assert torch.allclose(gmsc(torch.ones((1, 1), dtype=torch.complex64)), torch.zeros(1, 1))
+
+    # 2. GMSC_Feature_Extractor must normalize Ry via coherenceMatrix so high-amplitude audio stays in [0, 1]
+    torch.manual_seed(12)
+    transform = _make_stft_transform()
+    ext = GMSC_Feature_Extractor(transform=transform, smoothing_time_constant=0.1)
+    stft_large = 50.0 * torch.randn(2, 4, transform.num_freq_bins, 12, dtype=torch.complex64)
+    out = ext.forward_stft(stft_large)
+    assert out.shape == (2, 1, transform.num_freq_bins, 12)
+    assert torch.isfinite(out).all()
+    assert (out >= 0.0).all() and (out <= 1.0).all()

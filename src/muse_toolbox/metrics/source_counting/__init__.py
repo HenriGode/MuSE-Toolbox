@@ -1,9 +1,17 @@
 """Metrics module."""
 
-from .accuracy import Accuracy
-from .confusionMatrix import ConfusionMatrix
-from .eventF1 import TolerantEventF1
-from .MSE import MSE
-from .MAE import MAE
+from muse_toolbox.metrics.source_counting.accuracy import Accuracy
+from muse_toolbox.metrics.source_counting.average_precision import AveragePrecision
+from muse_toolbox.metrics.source_counting.confusionMatrix import ConfusionMatrix
+from muse_toolbox.metrics.source_counting.eventF1 import TolerantEventF1
+from muse_toolbox.metrics.source_counting.MAE import MAE
+from muse_toolbox.metrics.source_counting.MSE import MSE
 
-__all__ = ["Accuracy", "ConfusionMatrix", "TolerantEventF1", "MSE", "MAE"]
+__all__ = [
+    "Accuracy",
+    "AveragePrecision",
+    "ConfusionMatrix",
+    "TolerantEventF1",
+    "MSE",
+    "MAE",
+]

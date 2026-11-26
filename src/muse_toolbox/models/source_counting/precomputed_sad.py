@@ -42,17 +42,38 @@ class PrecomputedSAD(torch.nn.Module):
             ValueError: If the input batch lacks the required 'meta' dictionary with 'scenario_id'.
             FileNotFoundError: If the precomputed SAD prediction file is not found on disk.
         """
-        if "meta" not in x or "scenario_id" not in x["meta"]:
-            raise ValueError("Input batch lacks required 'meta' dictionary with 'scenario_id'.")
-            
-        scenario_ids = x["meta"]["scenario_id"]
+        meta = x.get("meta", {})
+        rec_ids = meta.get("recording_id")
+        scenario_ids = meta.get("scenario_id")
+        if rec_ids is None and scenario_ids is None:
+            raise ValueError(
+                "Input batch lacks required 'meta' dictionary with 'recording_id' or 'scenario_id'."
+            )
+
         estimated_source_activities = []
         device = x["input"].device if "input" in x else torch.device("cpu")
 
-        for sid in scenario_ids:
-            filepath = os.path.join(self.predictions_dir, f"{sid}.pt")
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"SAD prediction not found for {sid} at {filepath}")
+        n_items = len(rec_ids) if rec_ids is not None else len(scenario_ids)
+        for i in range(n_items):
+            candidates: list[str] = []
+            if rec_ids is not None and i < len(rec_ids):
+                candidates.append(str(rec_ids[i]))
+            if scenario_ids is not None and i < len(scenario_ids):
+                sid_str = str(scenario_ids[i])
+                if sid_str not in candidates:
+                    candidates.append(sid_str)
+
+            filepath = None
+            for cand in candidates:
+                cand_path = os.path.join(self.predictions_dir, f"{cand}.pt")
+                if os.path.exists(cand_path):
+                    filepath = cand_path
+                    break
+
+            if filepath is None:
+                raise FileNotFoundError(
+                    f"SAD prediction not found for candidates {candidates} in {self.predictions_dir}"
+                )
 
             pred = torch.load(filepath, map_location=device)
             estimated_source_activities.append(pred)

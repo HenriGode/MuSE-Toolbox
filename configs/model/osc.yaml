@@ -16,16 +16,17 @@ loss_config:
     weight: null
 
 optimizer_config:
-  AdamW:
+  RAdam:
     lr: 0.0001
-    weight_decay: 0.01
+    weight_decay: 0.0001
+    decoupled_weight_decay: true
 
 lr_scheduler_config:
   ReduceLROnPlateau:
     monitor: "val/loss"
     mode: "min"
     factor: 0.5
-    patience: 3
+    patience: 5
     threshold: 0.0001
     threshold_mode: "rel"
     cooldown: 0
@@ -34,8 +35,12 @@ lr_scheduler_config:
 
 metrics_train: {}
 metrics_val:
+  AveragePrecision:
+    max_sources: ${dataset.generation_config.max_sources}
   TolerantEventF1:
-    tolerance_time: 0.5
+    tolerance_time: 1.0
+    past_tolerance_time: 0.0
+    causal_mode: "auto"
   META2DF: {}
   MAE: {}
   MSE: {}
@@ -45,8 +50,12 @@ metrics_val:
     stage: "val"
 
 metrics_test:
+  AveragePrecision:
+    max_sources: ${dataset.generation_config.max_sources}
   TolerantEventF1:
-    tolerance_time: 0.5
+    tolerance_time: 1.0
+    past_tolerance_time: 0.0
+    causal_mode: "auto"
   META2DF: {}
   MAE: {}
   MSE: {}

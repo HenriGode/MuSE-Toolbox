@@ -44,6 +44,19 @@ class BaseFeatureExtractor(nn.Module, ABC):
         return isinstance(self.transform, STFTtransform)
 
     @property
+    def is_single_channel_input(self) -> bool:
+        """Returns whether this extractor strictly requires only a single audio channel.
+
+        Spatial and multi-microphone extractors (even those producing ``C = 1`` array-condensed
+        outputs such as GMSC/wGMSC) return ``False``. Single-microphone spectral extractors
+        (e.g., Log-Mel or Pure-STFT in ``mode="ref"``) override this to ``True``.
+
+        Returns:
+            bool: ``True`` if only one microphone channel is consumed.
+        """
+        return False
+
+    @property
     @abstractmethod
     def signature(self) -> str:
         """

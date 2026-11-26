@@ -3,5 +3,7 @@ accelerator: "auto"
 devices: [0]
 precision: "16-mixed"
 max_epochs: 100
+gradient_clip_val: 5.0
+gradient_clip_algorithm: "norm"
 
 # Note: Custom batch sizes are now handled via dataset.batch_size

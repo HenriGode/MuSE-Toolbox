@@ -6,6 +6,7 @@ import torch
 log = logging.getLogger(__name__)
 from muse_toolbox.utils import (
     STFTtransform,
+    coherenceMatrix,
     get_real_dtype,
     gmsc,
     regularize,
@@ -89,9 +90,10 @@ class GMSC_Feature_Extractor(BaseFeatureExtractor):
             ),
             reg_factor=1e-6,
         )
+        Cy = coherenceMatrix(Ry)
 
-        # Compute GMSC: gmsc(Ry) -> (B, F, T, 1, 1)
-        gmsc_val = gmsc(Ry)[..., 0, 0].unsqueeze(1).to(
+        # Compute GMSC: gmsc(Cy) -> (B, F, T, 1, 1)
+        gmsc_val = gmsc(Cy)[..., 0, 0].unsqueeze(1).to(
             dtype=get_real_dtype(batch), device=batch.device
         )
 

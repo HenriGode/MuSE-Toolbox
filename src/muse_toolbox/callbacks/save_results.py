@@ -45,6 +45,109 @@ def _extract_collection_dataframe(
     return combined_df
 
 
+def _extract_collection_events_dataframe(
+    collection: MetricCollection, dataset_name: str | None = None
+) -> pd.DataFrame | None:
+    """Extracts event-level and detection-delay DataFrames from metrics supporting them.
+
+    Args:
+        collection (MetricCollection): Metric collection to inspect.
+        dataset_name (str | None, optional): Optional dataset identifier added as
+            the leading ``"dataset"`` column.
+
+    Returns:
+        pd.DataFrame | None: Event-level DataFrame, or ``None`` if no events exist.
+    """
+    event_dfs: list[pd.DataFrame] = []
+    for metric in collection.values():
+        if hasattr(metric, "get_events_dataframe"):
+            df = metric.get_events_dataframe()
+            if df is not None and not df.empty:
+                event_dfs.append(df.reset_index(drop=True))
+
+    if not event_dfs:
+        return None
+
+    combined = pd.concat(event_dfs, axis=0, ignore_index=True)
+    if dataset_name is not None and "dataset" not in combined.columns:
+        combined.insert(0, "dataset", dataset_name)
+    return combined
+
+
+def _build_collection_num_mics_rows(
+    collection: MetricCollection,
+    ds_df: pd.DataFrame | None,
+    dataset_name: str,
+) -> list[dict[str, Any]]:
+    """Computes per-``num_mics`` stratified metric summary rows for one dataset collection.
+
+    Args:
+        collection (MetricCollection): Evaluated metrics for one dataset.
+        ds_df (pd.DataFrame | None): Per-chunk DataFrame containing ``num_mics`` and
+            ``num_frames`` alongside frame metrics (Accuracy, MAE, MSE).
+        dataset_name (str): Dataset label for the ``dataset`` column.
+
+    Returns:
+        list[dict[str, Any]]: Sorted summary rows keyed by ``(dataset, num_mics)``.
+    """
+    ap_by_nm: dict[int, dict[str, float]] = {}
+    ef1_by_nm: dict[int, dict[str, float]] = {}
+    for metric in collection.values():
+        if hasattr(metric, "compute_by_num_mics"):
+            res = metric.compute_by_num_mics()
+            if isinstance(res, dict):
+                if any("AP_" in k or k == "mAP" for v in res.values() for k in v):
+                    ap_by_nm.update(res)
+                if any("F1score_" in k for v in res.values() for k in v):
+                    ef1_by_nm.update(res)
+
+    df_by_nm: dict[int, dict[str, Any]] = {}
+    if ds_df is not None and not ds_df.empty and "num_mics" in ds_df.columns:
+        valid_df = ds_df.dropna(subset=["num_mics"]).copy()
+        if not valid_df.empty:
+            valid_df["num_mics_int"] = valid_df["num_mics"].astype(int)
+            for nm, group in valid_df.groupby("num_mics_int"):
+                nm_int = int(nm)
+                row_stats: dict[str, Any] = {}
+                if "recording_id" in group.columns:
+                    row_stats["num_recordings"] = int(
+                        group["recording_id"].dropna().nunique()
+                    )
+                if "num_frames" in group.columns:
+                    weights = group["num_frames"].fillna(0.0).astype(float)
+                    total_frames = float(weights.sum())
+                    row_stats["num_frames"] = int(total_frames)
+                    for col in ("Accuracy", "MAE", "MSE"):
+                        if col in group.columns:
+                            vals = group[col].astype(float)
+                            if total_frames > 0.0:
+                                row_stats[col] = float(
+                                    (vals * weights).sum() / total_frames
+                                )
+                            else:
+                                row_stats[col] = float(vals.mean())
+                else:
+                    for col in ("Accuracy", "MAE", "MSE"):
+                        if col in group.columns:
+                            row_stats[col] = float(group[col].astype(float).mean())
+                df_by_nm[nm_int] = row_stats
+
+    all_m_values = sorted(
+        set(ap_by_nm.keys()) | set(ef1_by_nm.keys()) | set(df_by_nm.keys())
+    )
+    rows: list[dict[str, Any]] = []
+    for nm in all_m_values:
+        row: dict[str, Any] = {"dataset": dataset_name, "num_mics": int(nm)}
+        if nm in df_by_nm:
+            row.update(df_by_nm[nm])
+        if nm in ap_by_nm:
+            row.update(ap_by_nm[nm])
+        if nm in ef1_by_nm:
+            row.update(ef1_by_nm[nm])
+        rows.append(row)
+    return rows
+
+
 def _metrics_dict_to_scalar_row(
     dataset_label: str, metrics_dict: dict[str, Any]
 ) -> dict[str, Any]:
@@ -161,6 +264,35 @@ class SaveTestResultsCallback(Callback):
                 model.metric_collections["test"]
             )
 
+        # 3b. Extract and save transition-stratified per-event & detection-delay CSVs
+        per_dataset_event_dfs: list[pd.DataFrame] = []
+        for ds_name, collection in model.test_metric_collections.items():
+            ev_df = _extract_collection_events_dataframe(
+                collection, dataset_name=ds_name
+            )
+            if ev_df is not None and not ev_df.empty:
+                per_dataset_event_dfs.append(ev_df)
+                if len(model.test_metric_collections) > 1:
+                    ev_ds_path = os.path.join(out_dir, f"test_events_{ds_name}.csv")
+                    ev_df.to_csv(ev_ds_path, index=False)
+                    log.info(
+                        f"Saved per-dataset event results for '{ds_name}' to {ev_ds_path}"
+                    )
+
+        if per_dataset_event_dfs:
+            combined_events_df: pd.DataFrame | None = pd.concat(
+                per_dataset_event_dfs, axis=0, ignore_index=True
+            )
+        else:
+            combined_events_df = _extract_collection_events_dataframe(
+                model.metric_collections["test"]
+            )
+
+        if combined_events_df is not None and not combined_events_df.empty:
+            events_path = os.path.join(out_dir, "test_events.csv")
+            combined_events_df.to_csv(events_path, index=False)
+            log.info(f"Saved event and detection-delay results to {events_path}")
+
         # 4. Save summary table CSV (per-dataset rows + overall_pooled + overall_macro)
         summary_rows: list[dict[str, Any]] = []
         for ds_name, ds_metrics in per_dataset.items():
@@ -189,6 +321,30 @@ class SaveTestResultsCallback(Callback):
         if isinstance(complexity_metrics, dict):
             for key, value in complexity_metrics.items():
                 combined_df[key] = value
+
+        # 5b. Save stratified per-num_mics summary CSV for multi-mic / subsampled datasets
+        num_mics_rows: list[dict[str, Any]] = []
+        if model.test_metric_collections:
+            for ds_name, collection in model.test_metric_collections.items():
+                ds_sub_df = (
+                    combined_df[combined_df["dataset"] == ds_name]
+                    if "dataset" in combined_df.columns
+                    else combined_df
+                )
+                num_mics_rows.extend(
+                    _build_collection_num_mics_rows(collection, ds_sub_df, ds_name)
+                )
+        else:
+            num_mics_rows.extend(
+                _build_collection_num_mics_rows(
+                    model.metric_collections["test"], combined_df, "default"
+                )
+            )
+        if num_mics_rows:
+            nm_df = pd.DataFrame(num_mics_rows)
+            nm_path = os.path.join(out_dir, "test_metrics_by_num_mics.csv")
+            nm_df.to_csv(nm_path, index=False)
+            log.info(f"Saved num_mics-stratified test metrics to {nm_path}")
 
         # 6. Save combined per-scenario CSV
         save_path = os.path.join(out_dir, "test_metrics.csv")

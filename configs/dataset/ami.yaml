@@ -8,8 +8,10 @@ id: "ami"
 raw_data_dir: ${paths.data_dir}/databases/ami
 
 # Ground truth parser strategy (Strategy Pattern)
+# Default: segment-level annotations (segments.xml) matching Cornell et al. (2022) Table 1.
+# Alternative: AMIWordsXMLParser (supports include_vocalsounds: true, bridge_gaps_s: 0.0).
 label_parser:
-  _target_: muse_toolbox.data.databases.ami_label_parsers.AMIWordsXMLParser
+  _target_: muse_toolbox.data.databases.ami_label_parsers.AMISegmentsXMLParser
   data_dir: ${dataset.raw_data_dir}
   sampling_frequency: ${dataset.sampling_frequency}
   annotations_dir_name: "Annotations_1.6.2_manual"
@@ -21,10 +23,10 @@ database:
   label_parser: ${dataset.label_parser}
 
 # Chunking parameters inherited from base_dataset.yaml
-# Single Speaker Data Augmentation Config
+# Single Speaker Data Augmentation Config (100% unique corpus + 70% augmentation = 170% epoch duration)
 augmentation:
   enabled: true
-  prob_augmentation: 0.5
+  augmentation_factor: 0.70
   prob_1spk: 0.0
   prob_2spk: 0.33
   prob_3spk: 0.33
@@ -32,10 +34,11 @@ augmentation:
   relative_sir_range: [-10.0, 10.0]
   sir_std: 4.0
 
-# Arrays to load
+# Arrays to load; set only_8ch_circular=true to exclude Idiap 4-ch Array2 & TNO 10-ch linear Array2
 arrays:
   - Array1
   - Array2
+only_8ch_circular: false
 
 generation_config:
   max_sources: 4

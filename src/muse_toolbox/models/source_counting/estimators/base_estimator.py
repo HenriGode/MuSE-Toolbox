@@ -88,6 +88,7 @@ class BaseSourceCountEstimator(nn.Module, ABC):
         self,
         features: torch.Tensor,
         cond_features: torch.Tensor | None = None,
+        valid_frames: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Processes input features and returns estimated source activity logits.
 
@@ -96,6 +97,9 @@ class BaseSourceCountEstimator(nn.Module, ABC):
                 ``(B, C * F, T)``.
             cond_features (torch.Tensor | None, optional): Optional conditioning
                 feature tensor for multi-stream fusion estimators. Defaults to ``None``.
+            valid_frames (torch.Tensor | None, optional): Optional valid frame counts
+                of shape ``(B,)`` used to mask right-padded frames in variable-length
+                batches. Defaults to ``None``.
 
         Returns:
             torch.Tensor: Source activity logits of shape ``(B, T, max_sources + 1)``.
@@ -108,6 +112,7 @@ class BaseSourceCountEstimator(nn.Module, ABC):
                 f"{self.__class__.__name__} is a single-stream estimator and does not "
                 "accept `cond_features`. Use FusionTransformerEstimator for dual-stream fusion."
             )
+        _ = valid_frames
         flat_features = self._flatten_channel_features(
             features, self.num_input_channels, stream_name="features"
         )
